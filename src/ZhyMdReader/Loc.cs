@@ -1,0 +1,169 @@
+namespace ZhyMdReader;
+
+/// <summary>
+/// 界面文本。C# 侧直接用 <see cref="T(string)"/>；以 "ui." 开头的键会下发给 viewer.js。
+/// </summary>
+internal static class Loc
+{
+    public const string DefaultLanguage = "en";
+
+    public static readonly IReadOnlyList<(string Code, string NativeName)> Languages =
+    [
+        ("en", "English"),
+        ("zh", "简体中文"),
+        ("ja", "日本語"),
+    ];
+
+    public static string Language { get; private set; } = DefaultLanguage;
+
+    public static string Normalize(string? language) =>
+        Languages.Any(l => l.Code == language) ? language! : DefaultLanguage;
+
+    public static void SetLanguage(string? language) => Language = Normalize(language);
+
+    public static string T(string key) =>
+        Tables[Language].TryGetValue(key, out var text) ? text
+        : Tables[DefaultLanguage].TryGetValue(key, out var fallback) ? fallback
+        : key;
+
+    public static string T(string key, params object[] args) => string.Format(T(key), args);
+
+    /// <summary>按 Windows 系统显示语言取文本（用于资源管理器右键菜单），与应用内语言设置无关。</summary>
+    public static string ForSystem(string key)
+    {
+        var system = Normalize(System.Globalization.CultureInfo.InstalledUICulture.TwoLetterISOLanguageName);
+        return Tables[system].TryGetValue(key, out var text) ? text : Tables[DefaultLanguage][key];
+    }
+
+    public static Dictionary<string, string> ViewerStrings() =>
+        Tables[DefaultLanguage].Keys
+            .Where(k => k.StartsWith("ui.", StringComparison.Ordinal))
+            .ToDictionary(k => k, T);
+
+    private static readonly Dictionary<string, Dictionary<string, string>> Tables = new()
+    {
+        ["en"] = new()
+        {
+            ["app.registered"] =
+                "Registered with File Explorer.\n\n" +
+                "· Right-click a .md file → \"Open with ZHY MD Reader\" (on Windows 11 it is under \"Show more options\").\n" +
+                "· ZHY MD Reader also appears in the \"Open with\" list.\n" +
+                "· To open on double-click: right-click a .md file → Open with → Choose another app → ZHY MD Reader → Always.",
+            ["app.unregistered"] = "Removed from File Explorer.",
+            ["app.webview2Missing"] =
+                "Unable to start the WebView2 runtime.\nPlease install the Microsoft Edge WebView2 Runtime:\n{0}\n\n{1}",
+            ["dialog.openTitle"] = "Open Markdown File",
+            ["dialog.filter"] = "Markdown files|*.md;*.markdown;*.mdown;*.mkd;*.mkdn|All files|*.*",
+            ["toast.fileNotFound"] = "File not found: {0}",
+            ["shell.menuText"] = "Open with ZHY MD Reader",
+            ["shell.fileType"] = "Markdown Document",
+
+            ["ui.toc.title"] = "Contents",
+            ["ui.btn.toc"] = "Show/hide contents (Ctrl+\\)",
+            ["ui.btn.back"] = "Back to previous file (Alt+←)",
+            ["ui.btn.open"] = "Open",
+            ["ui.btn.openTitle"] = "Open file (Ctrl+O)",
+            ["ui.btn.reload"] = "Reload (F5)",
+            ["ui.btn.theme"] = "Switch theme",
+            ["ui.btn.settings"] = "Settings",
+            ["ui.filePath.title"] = "Show in File Explorer",
+            ["ui.theme.auto"] = "System",
+            ["ui.theme.light"] = "Light",
+            ["ui.theme.dark"] = "Dark",
+            ["ui.welcome.line1"] = "Drag a Markdown file here, or press Ctrl + O to open one.",
+            ["ui.welcome.hint"] = "In File Explorer, right-click a .md file → \"Open with ZHY MD Reader\"",
+            ["ui.drop"] = "Drop to open",
+            ["ui.copy"] = "Copy",
+            ["ui.copy.done"] = "Copied",
+            ["ui.copy.failed"] = "Copy failed",
+            ["ui.error.loadFailed"] = "Unable to open file: {0}",
+            ["ui.settings.title"] = "Settings",
+            ["ui.settings.language"] = "Language",
+            ["ui.settings.theme"] = "Theme",
+            ["ui.settings.showToc"] = "Show table of contents",
+            ["ui.settings.close"] = "Close",
+        },
+        ["zh"] = new()
+        {
+            ["app.registered"] =
+                "已注册到资源管理器。\n\n" +
+                "· 右键 .md 文件即可看到「用 ZHY MD Reader 打开」（Win11 在「显示更多选项」里）。\n" +
+                "· 「打开方式」列表中也会出现 ZHY MD Reader。\n" +
+                "· 想双击直接打开：右键 .md → 打开方式 → 选择其他应用 → ZHY MD Reader → 始终。",
+            ["app.unregistered"] = "已从资源管理器中移除。",
+            ["app.webview2Missing"] =
+                "无法启动 WebView2 运行时。\n请安装 Microsoft Edge WebView2 Runtime：\n{0}\n\n{1}",
+            ["dialog.openTitle"] = "打开 Markdown 文件",
+            ["dialog.filter"] = "Markdown 文件|*.md;*.markdown;*.mdown;*.mkd;*.mkdn|所有文件|*.*",
+            ["toast.fileNotFound"] = "文件不存在：{0}",
+            ["shell.menuText"] = "用 ZHY MD Reader 打开",
+            ["shell.fileType"] = "Markdown 文档",
+
+            ["ui.toc.title"] = "目录",
+            ["ui.btn.toc"] = "显示/隐藏目录 (Ctrl+\\)",
+            ["ui.btn.back"] = "返回上一个文件 (Alt+←)",
+            ["ui.btn.open"] = "打开",
+            ["ui.btn.openTitle"] = "打开文件 (Ctrl+O)",
+            ["ui.btn.reload"] = "重新加载 (F5)",
+            ["ui.btn.theme"] = "切换主题",
+            ["ui.btn.settings"] = "设置",
+            ["ui.filePath.title"] = "在资源管理器中显示",
+            ["ui.theme.auto"] = "跟随系统",
+            ["ui.theme.light"] = "浅色",
+            ["ui.theme.dark"] = "深色",
+            ["ui.welcome.line1"] = "把 Markdown 文件拖到这里，或者按 Ctrl + O 打开。",
+            ["ui.welcome.hint"] = "在资源管理器中右键 .md 文件 →「用 ZHY MD Reader 打开」",
+            ["ui.drop"] = "松开以打开文件",
+            ["ui.copy"] = "复制",
+            ["ui.copy.done"] = "已复制",
+            ["ui.copy.failed"] = "复制失败",
+            ["ui.error.loadFailed"] = "无法打开文件：{0}",
+            ["ui.settings.title"] = "设置",
+            ["ui.settings.language"] = "语言",
+            ["ui.settings.theme"] = "主题",
+            ["ui.settings.showToc"] = "显示目录",
+            ["ui.settings.close"] = "关闭",
+        },
+        ["ja"] = new()
+        {
+            ["app.registered"] =
+                "エクスプローラーに登録しました。\n\n" +
+                "· .md ファイルを右クリック →「ZHY MD Reader で開く」（Windows 11 では「その他のオプションを確認」内）。\n" +
+                "· 「プログラムから開く」の一覧にも ZHY MD Reader が表示されます。\n" +
+                "· ダブルクリックで開くには：.md を右クリック → プログラムから開く → 別のプログラムを選択 → ZHY MD Reader → 常に使う。",
+            ["app.unregistered"] = "エクスプローラーから登録を解除しました。",
+            ["app.webview2Missing"] =
+                "WebView2 ランタイムを起動できません。\nMicrosoft Edge WebView2 Runtime をインストールしてください：\n{0}\n\n{1}",
+            ["dialog.openTitle"] = "Markdown ファイルを開く",
+            ["dialog.filter"] = "Markdown ファイル|*.md;*.markdown;*.mdown;*.mkd;*.mkdn|すべてのファイル|*.*",
+            ["toast.fileNotFound"] = "ファイルが見つかりません：{0}",
+            ["shell.menuText"] = "ZHY MD Reader で開く",
+            ["shell.fileType"] = "Markdown ドキュメント",
+
+            ["ui.toc.title"] = "目次",
+            ["ui.btn.toc"] = "目次の表示/非表示 (Ctrl+\\)",
+            ["ui.btn.back"] = "前のファイルに戻る (Alt+←)",
+            ["ui.btn.open"] = "開く",
+            ["ui.btn.openTitle"] = "ファイルを開く (Ctrl+O)",
+            ["ui.btn.reload"] = "再読み込み (F5)",
+            ["ui.btn.theme"] = "テーマの切り替え",
+            ["ui.btn.settings"] = "設定",
+            ["ui.filePath.title"] = "エクスプローラーで表示",
+            ["ui.theme.auto"] = "システム設定",
+            ["ui.theme.light"] = "ライト",
+            ["ui.theme.dark"] = "ダーク",
+            ["ui.welcome.line1"] = "Markdown ファイルをここにドラッグするか、Ctrl + O で開いてください。",
+            ["ui.welcome.hint"] = "エクスプローラーで .md ファイルを右クリック →「ZHY MD Reader で開く」",
+            ["ui.drop"] = "ドロップして開く",
+            ["ui.copy"] = "コピー",
+            ["ui.copy.done"] = "コピーしました",
+            ["ui.copy.failed"] = "コピー失敗",
+            ["ui.error.loadFailed"] = "ファイルを開けません：{0}",
+            ["ui.settings.title"] = "設定",
+            ["ui.settings.language"] = "言語",
+            ["ui.settings.theme"] = "テーマ",
+            ["ui.settings.showToc"] = "目次を表示する",
+            ["ui.settings.close"] = "閉じる",
+        },
+    };
+}
