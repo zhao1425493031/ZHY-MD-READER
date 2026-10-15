@@ -83,6 +83,16 @@ internal static class Library
         return true;
     }
 
+    /// <summary>磁盘上的文件改名后，列表里同一位置的条目跟着改路径。</summary>
+    public static bool RenameFile(List<LibraryItem> root, string oldPath, string newPath)
+    {
+        var (container, index) = FindFile(root, oldPath);
+        if (container is null)
+            return false;
+        container[index].Path = newPath;
+        return true;
+    }
+
     public static bool RemoveMissing(List<LibraryItem> root)
     {
         var removed = root.RemoveAll(i => !i.IsFolder && !FileExists(i.Path));

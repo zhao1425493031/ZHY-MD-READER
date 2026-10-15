@@ -67,7 +67,8 @@
 
   // ---------- 主题 ----------
   function applyTheme() {
-    const effective = state.theme === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : state.theme;
+    const effective = print.active ? 'light'
+      : state.theme === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : state.theme;
     document.documentElement.dataset.theme = effective;
     $('md-light').disabled = effective === 'dark';
     $('md-dark').disabled = effective !== 'dark';
@@ -644,6 +645,10 @@
     libOp('newFolder', { id, name: t('ui.files.newFolder') });
   }
 
+  function newFile(folderId, nearPath) {
+    libOp('newFile', { folderId, key: nearPath });
+  }
+
   function toggleFolder(row) {
     const li = row.parentElement;
     const expanded = li.classList.contains('collapsed');
@@ -652,6 +657,7 @@
   }
 
   function startRename(row) {
+    const isFile = row.dataset.kind === 'file';
     const nameEl = row.querySelector('.name');
     const original = nameEl.textContent;
     const input = document.createElement('input');
@@ -660,7 +666,10 @@
     row.draggable = false;
     nameEl.replaceWith(input);
     input.focus();
-    input.select();
+    // 文件只选中扩展名前面的部分
+    const dot = original.lastIndexOf('.');
+    if (isFile && dot > 0) input.setSelectionRange(0, dot);
+    else input.select();
 
     let done = false;
     const finish = commit => {
@@ -671,7 +680,8 @@
       row.draggable = true;
       if (commit && value && value !== original) {
         nameEl.textContent = value;
-        libOp('rename', { id: row.dataset.key, name: value });
+        if (isFile) libOp('renameFile', { key: row.dataset.key, name: value });
+        else libOp('rename', { id: row.dataset.key, name: value });
       }
     };
     input.addEventListener('keydown', event => {
@@ -691,6 +701,7 @@
   });
 
   $('btn-add-files').addEventListener('click', () => post({ type: 'addFiles' }));
+  $('btn-new-file').addEventListener('click', () => newFile(null, null));
   $('btn-new-folder').addEventListener('click', newFolder);
 
   // ---------- 右键菜单 ----------
@@ -731,9 +742,13 @@
   function fileMenu(row) {
     const path = row.dataset.key;
     const currentFolder = row.dataset.folder;
+    const missing = row.classList.contains('missing');
     const items = [
       { label: t('ui.files.open'), action: () => post({ type: 'openFile', path }) },
       { label: t('ui.files.reveal'), action: () => libOp('reveal', { key: path }) },
+      { label: t('ui.files.renameFile'), disabled: missing, action: () => startRename(row) },
+      { sep: true },
+      { label: t('ui.files.newFile'), action: () => newFile(currentFolder || null, path) },
     ];
 
     const targets = [];
@@ -754,7 +769,9 @@
 
   function folderMenu(row) {
     const id = row.dataset.key;
+    const firstFile = (findFolder(id)?.items || []).find(f => !f.missing);
     return [
+      { label: t('ui.files.newFile'), action: () => newFile(id, firstFile ? firstFile.path : null) },
       { label: t('ui.files.add'), action: () => post({ type: 'addFiles', folderId: id }) },
       { label: t('ui.files.newFolder'), action: newFolder },
       { label: t('ui.files.rename'), action: () => startRename(row) },
@@ -766,6 +783,7 @@
   function blankMenu() {
     const anyMissing = library.some(i => (i.type === 'folder' ? i.items.some(f => f.missing) : i.missing));
     return [
+      { label: t('ui.files.newFile'), action: () => newFile(null, null) },
       { label: t('ui.files.newFolder'), action: newFolder },
       { label: t('ui.files.add'), action: () => post({ type: 'addFiles' }) },
       { sep: true },
@@ -1611,7 +1629,39 @@
     post({ type: 'exportHtml', html: clone.innerHTML, title: headings[0] ? headings[0].textContent.trim() : ($('file-name').textContent || 'SmartMdReader') });
   }
 
-  $('btn-export').addEventListener('click', exportHtml);
+  $('btn-export').addEventListener('click', event => {
+    event.stopPropagation();
+    if (document.body.classList.contains('empty') || document.body.classList.contains('load-failed')) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    showMenu(rect.left, rect.bottom + 4, [
+      { label: t('ui.export.pdf'), action: () => post({ type: 'exportPdf' }) },
+      { label: t('ui.export.html'), action: exportHtml },
+    ]);
+  });
+
+  // ---------- 打印 / 导出 PDF：临时切到浅色主题 ----------
+  const print = { active: false, ready: true };
+
+  function beginPrint() {
+    if (print.active) return;
+    print.active = true;
+    print.ready = false;
+    if (window.CSS && CSS.highlights) CSS.highlights.delete('search-hit');
+    applyTheme();
+    Promise.resolve(renderMermaid()).finally(() => { print.ready = true; });
+  }
+
+  function endPrint() {
+    if (!print.active) return;
+    print.active = false;
+    print.ready = true;
+    applyTheme();
+    applySearchHighlight();
+  }
+
+  Object.assign(window.SmartMd, { beginPrint, endPrint, printReady: () => print.ready });
+  window.addEventListener('beforeprint', beginPrint);
+  window.addEventListener('afterprint', endPrint);
 
   // ---------- 工具栏与快捷键 ----------
   $('btn-toc').addEventListener('click', toggleSidebar);
@@ -1631,6 +1681,12 @@
     } else if (event.ctrlKey && event.key === ',') {
       event.preventDefault();
       openSettings();
+    } else if (event.key === 'F2' && !event.ctrlKey && !event.altKey && !inEditor && !event.target.closest('input, select, textarea')) {
+      const row = filesList.querySelector('.lib-row.active');
+      if (row) {
+        event.preventDefault();
+        startRename(row);
+      }
     } else if (event.ctrlKey && event.shiftKey && !event.altKey && key === 'f') {
       event.preventDefault();
       openSearch();
@@ -1689,6 +1745,8 @@
         case 'previewHtml': if (edit.canEdit) applyPreview(msg.html); break;
         case 'saved': onSaved(msg.text); break;
         case 'imageSaved': onImageSaved(msg); break;
+        case 'setMode': setMode(msg.mode); break;
+        case 'renamed': setFileInfo(msg.name, msg.path); break;
         case 'searchResults': showSearchResults(msg); break;
         case 'discard':
           if (edit.editor) edit.saved = edit.editor.getText();

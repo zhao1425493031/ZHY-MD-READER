@@ -447,6 +447,9 @@ public partial class MainWindow : Window
             case "exportHtml":
                 ExportHtml(GetString(root, "html") ?? "", GetString(root, "title") ?? "");
                 break;
+            case "exportPdf":
+                ExportPdf();
+                break;
         }
     }
 
@@ -481,6 +484,12 @@ public partial class MainWindow : Window
                 var folderId = GetString(msg, "folderId");
                 var before = GetString(msg, "before");
                 Library.Mutate(lib => Library.Move(lib, key, folderId, before));
+                break;
+            case "newFile":
+                CreateNewFile(GetString(msg, "folderId"), key);
+                break;
+            case "renameFile" when key is not null && name is not null:
+                RenameFile(key, name);
                 break;
             case "reveal" when key is not null:
                 if (File.Exists(key))

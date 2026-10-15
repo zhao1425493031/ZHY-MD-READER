@@ -17,7 +17,11 @@ Windows 上的轻量 Markdown 阅览器。在资源管理器中右键 `.md` 文�
   右键菜单可打开、在资源管理器中显示、移动到文件夹、从列表移除（不删除磁盘文件）、重命名/删除文件夹、移除已不存在的文件
 - 左侧「目录」（TOC），滚动时自动高亮当前章节
 - 文件内搜索（Ctrl+Shift+F 或文件栏的 🔍）：在列表中所有文件里搜关键词，点结果跳到对应位置并高亮
-- 导出 HTML：工具栏的导出按钮生成单个 HTML 文件（样式、本地图片、图表、公式都内嵌），发给别人用浏览器就能看
+- 导出：工具栏的导出按钮可选
+  - PDF：A4（美国等地区为 Letter），带页眉（文件名、日期）和页码，深色主题下也按浅色输出
+  - HTML：单个文件（样式、本地图片、图表、公式都内嵌），发给别人用浏览器就能看
+- 新建 / 重命名 md 文件：文件栏的「新建」按钮或右键菜单「新建 Markdown 文件」，新文件会加入列表并进入分屏编辑；
+  右键「重命名文件」或选中当前文件按 F2 直接改磁盘上的文件名（扩展名可省略）
 - 侧栏的「文件」和「目录」两块都可折叠，中间分隔条可拖动调整高度，侧栏宽度也可拖动
 - 编辑：工具栏可切换「阅读 / 分屏 / 编辑」（Ctrl+E）。分屏时左边源码（CodeMirror，语法高亮、Ctrl+F 查找替换）、
   右边实时预览并跟随滚动；Ctrl+S 保存，保留原文件的编码、BOM 和换行符；未保存时标题和文件列表显示 ●，
@@ -54,7 +58,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 - 可选任务：注册 .md 右键菜单（默认勾选）、桌面快捷方式；自动创建开始菜单快捷方式
 - 检测 WebView2 运行时，缺失时提示下载
 - 覆盖安装即升级；卸载时移除右键菜单、程序文件和用户数据
-- 支持静默安装：`SmartMdReader-Setup-1.3.0.exe /VERYSILENT /TASKS="explorer"`
+- 支持静默安装：`SmartMdReader-Setup-1.4.0.exe /VERYSILENT /TASKS="explorer"`
 
 使用提示：
 
@@ -80,6 +84,7 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1
 | Ctrl+S | 保存 |
 | Ctrl+D | 演示笔开/关（Esc 退出，Ctrl+Z 撤销一笔） |
 | Ctrl+Shift+F | 在列表中的所有文件里搜索 |
+| F2 | 重命名当前文件 |
 | Ctrl+B / Ctrl+I / Ctrl+K | 编辑时：加粗 / 斜体 / 链接 |
 | F5 / Ctrl+R | 重新加载 |
 | Alt+← | 返回上一个文件 |
