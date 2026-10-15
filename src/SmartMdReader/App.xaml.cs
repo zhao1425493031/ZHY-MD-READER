@@ -27,8 +27,39 @@ public partial class App : Application
         }
 
         var file = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
+        if (file is not null)
+        {
+            try { file = System.IO.Path.GetFullPath(file); } catch { }
+        }
+
+        var newWindow = args.Contains("--new-window", StringComparer.OrdinalIgnoreCase);
+        if (!newWindow && !SingleInstance.TryBecomePrimary())
+        {
+            if (SingleInstance.Forward(file))
+            {
+                Shutdown(0);
+                return;
+            }
+        }
+        else if (!newWindow)
+        {
+            SingleInstance.Listen(path => Dispatcher.BeginInvoke(() => OpenInExistingWindow(path)));
+        }
+
         new MainWindow(file).Show();
         Task.Run(FileAssociation.SyncMenuTextWithSystem);
+    }
+
+    private void OpenInExistingWindow(string? path)
+    {
+        var windows = Windows.OfType<MainWindow>().ToList();
+        var target = windows.FirstOrDefault(w => w.IsActive) ?? windows.LastOrDefault();
+        if (target is null)
+        {
+            new MainWindow(path).Show();
+            return;
+        }
+        target.OpenFromOtherInstance(path);
     }
 
     private void RunAndExit(Action action, string successMessage, bool quiet)

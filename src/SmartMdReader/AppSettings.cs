@@ -19,6 +19,10 @@ internal sealed class AppSettings
     public bool TocCollapsed { get; set; }
     public double EditorRatio { get; set; } = 0.5;
 
+    /// <summary>正文宽度（窗口宽度的百分比）。</summary>
+    public int ContentWidth { get; set; } = 90;
+    public int FontSize { get; set; } = 16;
+
     public List<LibraryItem> Library { get; set; } = [];
 
     public static string FilePath => Path.Combine(AppInfo.DataDir, "settings.json");

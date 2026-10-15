@@ -33,6 +33,9 @@
   const pen = { active: false, tool: 'pen', color: '#e5534b', size: 4, strokes: [], history: [], current: null, erasing: null, width: 0 };
   let lineMarks = [];
 
+  const editorLabels = {};
+  const reading = { contentWidth: 90, fontSize: 16 };
+
   // 宿主在「是否保存」时通过 ExecuteScript 取编辑器内容
   window.SmartMd = { getText: () => (edit.editor ? edit.editor.getText() : null) };
   let strings = {};
@@ -51,7 +54,15 @@
     document.documentElement.lang = HTML_LANG[state.language] || 'en';
     document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
     $('btn-theme').textContent = t(`ui.theme.${state.theme}`);
+    Object.assign(editorLabels, {
+      linkText: t('ui.fmt.linkText'),
+      imageAlt: t('ui.fmt.imageAlt'),
+      headerCell: t('ui.fmt.headerCell'),
+      cell: t('ui.fmt.cell'),
+    });
+    updateStats();
   }
 
   // ---------- 主题 ----------
@@ -65,6 +76,15 @@
     $('btn-theme').textContent = t(`ui.theme.${state.theme}`);
     $('set-theme').value = state.theme;
     if (edit.editor) edit.editor.setDark(effective === 'dark');
+    if (mermaidTheme !== null && mermaidTheme !== effective) renderMermaid();
+  }
+
+  function applyReading() {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--content-w', `${reading.contentWidth}%`);
+    rootStyle.setProperty('--content-fs', `${reading.fontSize}px`);
+    $('set-width').value = String(reading.contentWidth);
+    $('set-font-size').value = String(reading.fontSize);
   }
 
   function setTheme(theme) {
@@ -89,7 +109,14 @@
   }
 
   function saveSettings(extra) {
-    post({ type: 'settings', theme: state.theme, toc: state.sidebar, ...extra });
+    post({
+      type: 'settings',
+      theme: state.theme,
+      toc: state.sidebar,
+      contentWidth: reading.contentWidth,
+      fontSize: reading.fontSize,
+      ...extra,
+    });
   }
 
   // ---------- 侧栏布局 ----------
@@ -189,6 +216,16 @@
 
   $('set-language').addEventListener('change', event => saveSettings({ language: event.target.value }));
   $('set-theme').addEventListener('change', event => setTheme(event.target.value));
+  $('set-width').addEventListener('change', event => {
+    reading.contentWidth = Number(event.target.value) || 90;
+    applyReading();
+    saveSettings();
+  });
+  $('set-font-size').addEventListener('change', event => {
+    reading.fontSize = Number(event.target.value) || 16;
+    applyReading();
+    saveSettings();
+  });
   $('set-toc').addEventListener('change', event => {
     state.sidebar = event.target.checked;
     applySidebar();
@@ -214,7 +251,7 @@
     loadSource(msg.source ?? '', same && msg.keepScroll);
     if (!same || !msg.keepScroll) clearPen();
 
-    enhanceCodeBlocks();
+    enhanceContent();
     buildToc();
     collectLineMarks();
 
@@ -236,12 +273,18 @@
       restoreScrollAfterImages(previousScroll);
     }
     updateActiveHeading();
+
+    if (pendingReveal && samePath(pendingReveal.path, msg.path)) {
+      const { line } = pendingReveal;
+      pendingReveal = null;
+      requestAnimationFrame(() => revealLine(line));
+    }
   }
 
   function applyPreview(html) {
     const previousScroll = scroller.scrollTop;
     content.innerHTML = html;
-    enhanceCodeBlocks();
+    enhanceContent();
     buildToc();
     collectLineMarks();
     clearPen();
@@ -272,6 +315,7 @@
     document.body.classList.add('empty', 'toc-none');
     setFileInfo('', '');
     disableEditing();
+    updateStats();
   }
 
   function showError(msg) {
@@ -293,6 +337,138 @@
     document.title = name ? `${name} - SmartMdReader` : 'SmartMdReader';
     state.currentPath = path || null;
     markActiveFile();
+  }
+
+  let contentGen = 0;
+
+  function enhanceContent() {
+    contentGen++;
+    enhanceCodeBlocks();
+    renderMath();
+    renderMermaid();
+    updateStats();
+    applySearchHighlight();
+  }
+
+  // ---------- 按需加载的第三方脚本 ----------
+  const scriptLoads = {};
+  function loadScript(src) {
+    if (!scriptLoads[src]) {
+      scriptLoads[src] = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = () => {
+          delete scriptLoads[src];
+          reject(new Error(`load failed: ${src}`));
+        };
+        document.head.appendChild(script);
+      });
+    }
+    return scriptLoads[src];
+  }
+
+  // ---------- 数学公式（KaTeX） ----------
+  function renderMath() {
+    const nodes = [...content.querySelectorAll('.math')];
+    if (nodes.length === 0) return;
+    if (!window.katex) {
+      const gen = contentGen;
+      loadScript('https://app.smartmd/vendor/katex/katex.min.js')
+        .then(() => {
+          if (gen === contentGen) {
+            renderMath();
+            updateStats();
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+    nodes.forEach(el => {
+      if (el.dataset.rendered) return;
+      const display = el.tagName === 'DIV';
+      let tex = el.textContent.trim();
+      tex = display ? tex.replace(/^\\\[|\\\]$/g, '') : tex.replace(/^\\\(|\\\)$/g, '');
+      try {
+        katex.render(tex, el, { displayMode: display, throwOnError: false, output: 'htmlAndMathml' });
+        el.dataset.rendered = '1';
+      } catch {
+        // 保留原文
+      }
+    });
+  }
+
+  // ---------- Mermaid 图表 ----------
+  let mermaidTheme = null;
+  let mermaidSeq = 0;
+  const mermaidCache = new Map();
+
+  async function renderMermaid() {
+    if (!content.querySelector('.mermaid')) return;
+    const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    const gen = contentGen;
+    try {
+      await loadScript('https://app.smartmd/vendor/mermaid.min.js');
+    } catch {
+      return;
+    }
+    if (gen !== contentGen) return;
+    if (mermaidTheme !== theme) {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        theme: theme === 'dark' ? 'dark' : 'default',
+        fontFamily: 'inherit',
+      });
+      mermaidTheme = theme;
+    }
+
+    for (const el of content.querySelectorAll('.mermaid')) {
+      if (!el.dataset.source) el.dataset.source = el.textContent.trim();
+      if (el.dataset.rendered === theme) continue;
+      const source = el.dataset.source;
+      const key = `${theme}\n${source}`;
+      let svg = mermaidCache.get(key);
+      if (!svg) {
+        try {
+          ({ svg } = await mermaid.render(`mermaid-${++mermaidSeq}`, source));
+          mermaidCache.set(key, svg);
+          if (mermaidCache.size > 60) mermaidCache.delete(mermaidCache.keys().next().value);
+        } catch (err) {
+          document.querySelectorAll(`#dmermaid-${mermaidSeq}, #mermaid-${mermaidSeq}`).forEach(n => n.remove());
+          if (!el.isConnected) continue;
+          el.textContent = source;
+          const box = document.createElement('div');
+          box.className = 'mermaid-error';
+          box.textContent = `${t('ui.mermaid.error')}: ${(err && err.message) || err}`;
+          el.appendChild(box);
+          continue;
+        }
+      }
+      if (!el.isConnected) continue;
+      el.innerHTML = svg;
+      el.dataset.rendered = theme;
+    }
+    if (edit.mode === 'split') syncPreviewToEditor();
+  }
+
+  // ---------- 字数统计 ----------
+  const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/g;
+  function updateStats() {
+    const el = $('doc-stats');
+    if (document.body.classList.contains('empty') || !content.textContent.trim()) {
+      el.textContent = '';
+      return;
+    }
+    const clone = content.cloneNode(true);
+    clone.querySelectorAll('.copy-btn, .mermaid, .katex-mathml').forEach(n => n.remove());
+    const text = clone.textContent;
+    const cjk = (text.match(CJK) || []).length;
+    const words = (text.replace(CJK, ' ').match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu) || []).length;
+    const minutes = Math.max(1, Math.round(cjk / 400 + words / 200));
+    el.textContent = cjk > words
+      ? t('ui.stats.cjk', (cjk + words).toLocaleString(), minutes)
+      : t('ui.stats', words.toLocaleString(), minutes);
   }
 
   function enhanceCodeBlocks() {
@@ -811,6 +987,8 @@
       onScroll: () => {
         if (syncLock !== 'preview') syncPreviewToEditor();
       },
+      onPasteImage: pasteImage,
+      labels: editorLabels,
     });
   }
 
@@ -1224,6 +1402,217 @@
   $('pen-close').addEventListener('click', closePen);
   $('btn-pen').addEventListener('click', togglePen);
 
+  // ---------- 编辑器格式工具栏 / 粘贴图片 ----------
+  const editorToolbar = $('editor-toolbar');
+  editorToolbar.addEventListener('mousedown', event => event.preventDefault());
+  editorToolbar.addEventListener('click', event => {
+    const button = event.target.closest('button[data-fmt]');
+    if (button && edit.editor) edit.editor.format(button.dataset.fmt);
+  });
+
+  let imageSeq = 0;
+  function pasteImage(file) {
+    if (!edit.canEdit) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const comma = dataUrl.indexOf(',');
+      if (comma < 0) return;
+      post({ type: 'pasteImage', id: String(++imageSeq), mime: file.type, data: dataUrl.slice(comma + 1) });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function onImageSaved(msg) {
+    if (!msg.path || !edit.editor) return;
+    edit.editor.insertText(`![](${msg.path})`);
+  }
+
+  // ---------- 文件内搜索 ----------
+  const search = { seq: 0, timer: 0, query: '' };
+  const searchInput = $('search-input');
+  const searchResults = $('search-results');
+  let pendingReveal = null;
+
+  function openSearch() {
+    if (!state.sidebar) {
+      state.sidebar = true;
+      applySidebar();
+      saveSettings();
+    }
+    if (state.layout.filesCollapsed) {
+      state.layout.filesCollapsed = false;
+      applyLayout();
+      saveLayout();
+    }
+    document.body.classList.add('searching');
+    searchInput.focus();
+    searchInput.select();
+  }
+
+  function closeSearch() {
+    clearTimeout(search.timer);
+    search.seq++;
+    search.query = '';
+    searchInput.value = '';
+    searchResults.innerHTML = '';
+    document.body.classList.remove('searching', 'search-active');
+    applySearchHighlight();
+  }
+
+  function runSearch() {
+    clearTimeout(search.timer);
+    const query = searchInput.value.trim();
+    document.body.classList.toggle('search-active', query.length > 0);
+    if (!query) {
+      search.query = '';
+      searchResults.innerHTML = '';
+      applySearchHighlight();
+      return;
+    }
+    search.timer = setTimeout(() => {
+      search.seq++;
+      searchResults.innerHTML = `<div class="search-status">${escapeHtml(t('ui.search.searching'))}</div>`;
+      post({ type: 'search', query, seq: search.seq });
+    }, 250);
+  }
+
+  const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  function markQuery(text, query) {
+    const re = new RegExp(escapeRegExp(query), 'gi');
+    let out = '';
+    let last = 0;
+    for (const m of text.matchAll(re)) {
+      out += escapeHtml(text.slice(last, m.index)) + `<mark>${escapeHtml(m[0])}</mark>`;
+      last = m.index + m[0].length;
+    }
+    return out + escapeHtml(text.slice(last));
+  }
+
+  function showSearchResults(msg) {
+    if (msg.seq !== search.seq) return;
+    search.query = msg.query;
+    applySearchHighlight();
+    searchResults.innerHTML = '';
+    if (msg.results.length === 0) {
+      searchResults.innerHTML = `<div class="search-status">${escapeHtml(t('ui.search.none'))}</div>`;
+      return;
+    }
+
+    const groups = new Map();
+    msg.results.forEach(r => {
+      if (!groups.has(r.path)) groups.set(r.path, []);
+      groups.get(r.path).push(r);
+    });
+    groups.forEach((hits, path) => {
+      const head = document.createElement('div');
+      head.className = 'search-file';
+      head.title = path;
+      head.innerHTML = `${ICON_FILE}<span class="name"></span><span class="count">${hits.length}</span>`;
+      head.querySelector('.name').textContent = hits[0].name;
+      searchResults.appendChild(head);
+      hits.forEach(hit => {
+        const row = document.createElement('a');
+        row.className = 'search-hit';
+        row.innerHTML = markQuery(hit.text, msg.query);
+        row.title = `${hit.name}:${hit.line + 1}`;
+        row.addEventListener('click', () => openSearchHit(hit));
+        searchResults.appendChild(row);
+      });
+    });
+    if (msg.truncated) {
+      const more = document.createElement('div');
+      more.className = 'search-status';
+      more.textContent = t('ui.search.truncated', msg.results.length);
+      searchResults.appendChild(more);
+    }
+  }
+
+  function openSearchHit(hit) {
+    if (samePath(hit.path, state.currentPath)) {
+      revealLine(hit.line);
+    } else {
+      pendingReveal = { path: hit.path, line: hit.line };
+      post({ type: 'openFile', path: hit.path });
+    }
+  }
+
+  /** 定位到源码第 line 行（从 0 开始）对应的位置并闪一下 */
+  function revealLine(line) {
+    if (edit.mode !== 'read' && edit.editor) edit.editor.gotoLine(line + 1);
+    if (edit.mode === 'edit') return;
+    let target = null;
+    content.querySelectorAll('[data-line]').forEach(el => {
+      if (Number(el.dataset.line) <= line && el.getClientRects().length > 0) target = el;
+    });
+    if (!target) return;
+    target.scrollIntoView({ block: 'center' });
+    target.classList.remove('search-flash');
+    void target.offsetWidth;
+    target.classList.add('search-flash');
+  }
+
+  /** 用 CSS Highlight API 标出正文里的搜索词，不改动 DOM */
+  function applySearchHighlight() {
+    if (!window.CSS || !CSS.highlights) return;
+    CSS.highlights.delete('search-hit');
+    const query = search.query;
+    if (!query || !document.body.classList.contains('search-active')) return;
+    const re = new RegExp(escapeRegExp(query), 'gi');
+    const ranges = [];
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node && ranges.length < 2000; node = walker.nextNode()) {
+      if (node.parentElement.closest('.copy-btn, .katex-mathml')) continue;
+      for (const m of node.data.matchAll(re)) {
+        const range = new Range();
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        ranges.push(range);
+      }
+    }
+    if (ranges.length) CSS.highlights.set('search-hit', new Highlight(...ranges));
+  }
+
+  $('btn-search').addEventListener('click', event => {
+    event.stopPropagation();
+    if (document.body.classList.contains('searching')) closeSearch();
+    else openSearch();
+  });
+  $('search-close').addEventListener('click', closeSearch);
+  searchInput.addEventListener('input', runSearch);
+  searchInput.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSearch();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const first = searchResults.querySelector('.search-hit');
+      if (first) first.click();
+    }
+  });
+
+  // ---------- 导出 HTML ----------
+  function exportHtml() {
+    if (document.body.classList.contains('empty') || document.body.classList.contains('load-failed')) return;
+    const clone = content.cloneNode(true);
+    clone.querySelectorAll('.copy-btn, .mermaid-error').forEach(n => n.remove());
+    const sourceImages = content.querySelectorAll('img');
+    clone.querySelectorAll('img').forEach((img, i) => {
+      if (sourceImages[i]) img.setAttribute('src', sourceImages[i].src);
+    });
+    clone.querySelectorAll('[data-line]').forEach(el => el.removeAttribute('data-line'));
+    clone.querySelectorAll('[data-rendered], [data-source]').forEach(el => {
+      el.removeAttribute('data-rendered');
+      el.removeAttribute('data-source');
+    });
+    post({ type: 'exportHtml', html: clone.innerHTML, title: headings[0] ? headings[0].textContent.trim() : ($('file-name').textContent || 'SmartMdReader') });
+  }
+
+  $('btn-export').addEventListener('click', exportHtml);
+
   // ---------- 工具栏与快捷键 ----------
   $('btn-toc').addEventListener('click', toggleSidebar);
   $('btn-back').addEventListener('click', () => post({ type: 'back' }));
@@ -1242,6 +1631,9 @@
     } else if (event.ctrlKey && event.key === ',') {
       event.preventDefault();
       openSettings();
+    } else if (event.ctrlKey && event.shiftKey && !event.altKey && key === 'f') {
+      event.preventDefault();
+      openSearch();
     } else if (event.ctrlKey && !event.shiftKey && !event.altKey && key === 's') {
       event.preventDefault();
       saveDoc();
@@ -1279,6 +1671,9 @@
           state.language = msg.language || 'en';
           strings = msg.strings || {};
           if (msg.layout) Object.assign(state.layout, msg.layout);
+          if (msg.contentWidth) reading.contentWidth = msg.contentWidth;
+          if (msg.fontSize) reading.fontSize = msg.fontSize;
+          applyReading();
           fillLanguages(msg.languages || []);
           applyStrings();
           applySidebar();
@@ -1293,6 +1688,8 @@
         case 'render': render(msg); break;
         case 'previewHtml': if (edit.canEdit) applyPreview(msg.html); break;
         case 'saved': onSaved(msg.text); break;
+        case 'imageSaved': onImageSaved(msg); break;
+        case 'searchResults': showSearchResults(msg); break;
         case 'discard':
           if (edit.editor) edit.saved = edit.editor.getText();
           setDirty(false);

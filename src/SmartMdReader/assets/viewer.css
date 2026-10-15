@@ -91,6 +91,110 @@ html, body {
 
 #file-path:hover { text-decoration: underline; }
 
+#doc-stats {
+  flex-shrink: 0;
+  padding: 0 8px;
+  color: var(--bar-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+body.empty #doc-stats, body.empty #btn-export { display: none; }
+@media (max-width: 900px) { #doc-stats { display: none; } }
+
+/* 编辑器格式工具栏 */
+#editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toc-bg);
+}
+
+#editor-toolbar button {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--bar-fg);
+  font: 600 14px/1 "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+#editor-toolbar button:hover { background: var(--btn-hover); }
+.fmt-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
+
+/* 文件内搜索 */
+#search-box {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px 6px 10px;
+}
+
+body.searching:not(.files-collapsed) #search-box { display: flex; }
+
+#search-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page-bg);
+  color: var(--bar-fg);
+  font: 13px "Segoe UI", "Yu Gothic UI", "Microsoft YaHei UI", sans-serif;
+  outline: none;
+}
+
+#search-input:focus { border-color: var(--toc-active); }
+#search-results { display: none; }
+body.search-active #search-results { display: block; }
+body.search-active #files-list,
+body.search-active #files-empty { display: none !important; }
+
+.search-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 2px;
+  color: var(--bar-fg);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.search-file .count { margin-left: auto; color: var(--bar-muted); font-weight: 400; }
+
+.search-hit {
+  display: block;
+  padding: 3px 8px 3px 22px;
+  border-radius: 5px;
+  color: var(--bar-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  cursor: pointer;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+}
+
+.search-hit:hover { background: var(--toc-hover); color: var(--bar-fg); }
+.search-hit mark { background: #fff8c5; color: #1f2328; border-radius: 2px; }
+:root[data-theme="dark"] .search-hit mark { background: #bb800966; color: inherit; }
+.search-status { padding: 8px 10px; color: var(--bar-muted); font-size: 12px; }
+
 /* 布局 */
 #layout {
   display: flex;
@@ -578,12 +682,28 @@ body.pen-on #pen-toolbar {
 }
 
 .markdown-body {
-  width: 90%;
+  width: var(--content-w, 90%);
   margin: 0 auto;
   padding: 32px 0 120px;
+  font-size: var(--content-fs, 16px);
 }
 
 body.mode-split .markdown-body { width: 92%; padding-top: 20px; }
+
+/* Mermaid / 数学公式 */
+.markdown-body .mermaid { margin: 0 0 16px; text-align: center; overflow-x: auto; }
+.markdown-body pre.mermaid[data-rendered] { padding: 8px 0; background: transparent; white-space: normal; line-height: normal; }
+.markdown-body .mermaid:not([data-rendered]) { white-space: pre; text-align: left; font-family: ui-monospace, Consolas, monospace; font-size: 85%; color: var(--bar-muted); }
+.markdown-body .mermaid svg { max-width: 100%; height: auto; }
+.markdown-body .mermaid-error { color: #cf222e; font-size: 12px; text-align: left; white-space: pre-wrap; }
+.markdown-body div.math { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; }
+.markdown-body .katex { font-size: 1.1em; }
+
+/* 搜索结果中的匹配高亮（CSS Custom Highlight API） */
+::highlight(search-hit) { background: #fff8c5; color: #1f2328; }
+:root[data-theme="dark"] ::highlight(search-hit) { background: #bb800966; color: inherit; }
+.search-flash { animation: search-flash 1.6s ease-out; }
+@keyframes search-flash { from { background: color-mix(in srgb, #d4a72c 35%, transparent); } to { background: transparent; } }
 
 body.empty #content { display: none; }
 
@@ -752,6 +872,7 @@ body.settings-open #settings-overlay { display: flex; }
   html, body { height: auto; overflow: visible; }
   #toolbar, #sidebar, #sidebar-resizer, #ctx-menu, #toast, #drop-overlay, #settings-overlay, .copy-btn,
   #editor-pane, #editor-splitter, #pen-canvas, #pen-toolbar { display: none !important; }
+  .markdown-body { font-size: 16px; }
   #preview-wrap { display: block !important; }
   #layout { display: block; height: auto; }
   #scroller { overflow: visible; }

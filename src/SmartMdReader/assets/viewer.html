@@ -10,6 +10,7 @@
   <link id="md-dark" rel="stylesheet" href="https://app.smartmd/vendor/github-markdown-dark.css" disabled>
   <link id="hl-light" rel="stylesheet" href="https://app.smartmd/vendor/hljs-light.min.css">
   <link id="hl-dark" rel="stylesheet" href="https://app.smartmd/vendor/hljs-dark.min.css" disabled>
+  <link rel="stylesheet" href="https://app.smartmd/vendor/katex/katex.min.css">
   <link rel="stylesheet" href="https://app.smartmd/viewer.css">
   <script src="https://app.smartmd/vendor/highlight.min.js"></script>
   <script src="https://app.smartmd/vendor/languages/powershell.min.js"></script>
@@ -30,6 +31,7 @@
       <span id="file-name"></span>
       <span id="file-path" data-i18n-title="ui.filePath.title"></span>
     </div>
+    <span id="doc-stats"></span>
     <div id="mode-switch" class="segmented" data-i18n-title="ui.mode.title">
       <button data-mode="read" data-i18n="ui.mode.read"></button>
       <button data-mode="split" data-i18n="ui.mode.split"></button>
@@ -40,6 +42,9 @@
     </button>
     <button id="btn-pen" class="icon" data-i18n-title="ui.pen.title">
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M11.01 1.72a1.75 1.75 0 0 1 2.47 0l.8.8a1.75 1.75 0 0 1 0 2.47l-8.3 8.3c-.1.1-.23.17-.36.2l-3.25.86a.75.75 0 0 1-.92-.92l.86-3.25c.03-.13.1-.26.2-.36l8.5-8.1Zm1.41 1.06a.25.25 0 0 0-.35 0L10.9 3.95l1.15 1.15 1.17-1.17a.25.25 0 0 0 0-.35l-.8-.8ZM10.99 6.16 9.84 5.01 3.98 10.6l-.5 1.92 1.92-.5 5.6-5.86Z"/></svg>
+    </button>
+    <button id="btn-export" class="icon" data-i18n-title="ui.btn.export">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .14.11.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14H2.75ZM7.25 7.69V1.75a.75.75 0 0 1 1.5 0v5.94l1.97-1.97a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 6.78a.75.75 0 0 1 1.06-1.06l1.97 1.97Z"/></svg>
     </button>
     <button id="btn-reload" class="icon" data-i18n-title="ui.btn.reload">⟳</button>
     <button id="btn-theme" data-i18n-title="ui.btn.theme"></button>
@@ -53,13 +58,21 @@
           <span class="chevron"></span>
           <span class="pane-title" data-i18n="ui.files.title"></span>
           <span class="pane-actions">
+            <button id="btn-search" class="pane-btn" data-i18n-title="ui.search.title">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M10.68 11.74a6 6 0 0 1-7.92-8.98 6 6 0 0 1 8.98 7.92l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04ZM11.5 7a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Z"/></svg>
+            </button>
             <button id="btn-add-files" class="pane-btn" data-i18n-title="ui.files.add">＋</button>
             <button id="btn-new-folder" class="pane-btn" data-i18n-title="ui.files.newFolder">
               <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M1.75 2.5h4.19c.2 0 .39.08.53.22l1.06 1.06c.14.14.33.22.53.22h6.19c.41 0 .75.34.75.75v8.5c0 .41-.34.75-.75.75H1.75A.75.75 0 0 1 1 13.25V3.25c0-.41.34-.75.75-.75ZM2.5 4v8.75h11V5.5H8.06c-.6 0-1.17-.24-1.59-.66L5.63 4H2.5Zm5.5 2.5c.28 0 .5.22.5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7c0-.28.22-.5.5-.5Z"/></svg>
             </button>
           </span>
         </div>
+        <div id="search-box">
+          <input id="search-input" type="text" spellcheck="false" data-i18n-placeholder="ui.search.placeholder">
+          <button id="search-close" class="pane-btn">✕</button>
+        </div>
         <div class="pane-body" id="files-body">
+          <div id="search-results"></div>
           <ul id="files-list"></ul>
           <div id="files-empty" data-i18n="ui.files.empty"></div>
         </div>
@@ -81,6 +94,42 @@
         <span data-i18n="ui.edit.externalChange"></span>
         <button id="banner-reload" data-i18n="ui.edit.reload"></button>
         <button id="banner-keep" data-i18n="ui.edit.keepMine"></button>
+      </div>
+      <div id="editor-toolbar">
+        <button data-fmt="heading" data-i18n-title="ui.fmt.heading"><b>H</b></button>
+        <button data-fmt="bold" data-i18n-title="ui.fmt.bold"><b>B</b></button>
+        <button data-fmt="italic" data-i18n-title="ui.fmt.italic"><i>I</i></button>
+        <button data-fmt="strike" data-i18n-title="ui.fmt.strike"><s>S</s></button>
+        <span class="fmt-sep"></span>
+        <button data-fmt="ul" data-i18n-title="ui.fmt.ul">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M5.75 2.5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5ZM2 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm1-6a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM2 4a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>
+        </button>
+        <button data-fmt="ol" data-i18n-title="ui.fmt.ol">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M5 3.25a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 5 3.25Zm0 5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 5 8.25Zm0 5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1-.75-.75ZM.92 1.6h1.1v3.9H1.2V2.5H.9Zm-.1 7.2c0-.75.55-1.2 1.2-1.2.62 0 1.15.4 1.15 1 0 .42-.2.68-.55 1.02l-.62.6h1.2v.68H.85v-.6l1.12-1.1c.24-.24.33-.38.33-.58 0-.2-.13-.34-.33-.34-.22 0-.35.16-.35.4H.82Z"/></svg>
+        </button>
+        <button data-fmt="task" data-i18n-title="ui.fmt.task">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M2.5 1.75v11.5c0 .14.11.25.25.25h3.17a.75.75 0 0 1 0 1.5H2.75A1.75 1.75 0 0 1 1 13.25V1.75C1 .78 1.78 0 2.75 0h8.5C12.22 0 13 .78 13 1.75v7.74a.75.75 0 0 1-1.5 0V1.75a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25Zm13.03 10.03-3.5 3.5a.75.75 0 0 1-1.06 0l-1.75-1.75a.75.75 0 1 1 1.06-1.06l1.22 1.22 2.97-2.97a.75.75 0 1 1 1.06 1.06ZM4.75 4h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5Zm0 3h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5Z"/></svg>
+        </button>
+        <button data-fmt="quote" data-i18n-title="ui.fmt.quote">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.75 2.5h10.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Zm4 5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5ZM2.5 7.75v6a.75.75 0 0 1-1.5 0v-6a.75.75 0 0 1 1.5 0Z"/></svg>
+        </button>
+        <span class="fmt-sep"></span>
+        <button data-fmt="code" data-i18n-title="ui.fmt.code">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="m11.28 3.22 4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L13.94 8l-3.72-3.72a.75.75 0 0 1 1.06-1.06Zm-6.56 0a.75.75 0 0 1 0 1.06L1.06 8l3.72 3.72a.75.75 0 0 1-1.06 1.06L-.53 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z"/></svg>
+        </button>
+        <button data-fmt="codeblock" data-i18n-title="ui.fmt.codeblock">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M0 1.75C0 .78.78 0 1.75 0h12.5C15.22 0 16 .78 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .14.11.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25Zm7.47 3.97a.75.75 0 0 1 1.06 0l2 2a.75.75 0 0 1 0 1.06l-2 2a.75.75 0 1 1-1.06-1.06L10.69 8 9.22 6.53a.75.75 0 0 1 0-1.06ZM6.78 6.53 5.31 8l1.47 1.47a.75.75 0 0 1-1.06 1.06l-2-2a.75.75 0 0 1 0-1.06l2-2a.75.75 0 1 1 1.06 1.06Z"/></svg>
+        </button>
+        <button data-fmt="link" data-i18n-title="ui.fmt.link">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="m7.78 3.84 1.25-1.25a3.5 3.5 0 0 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .75.75 0 0 1 1.06-1.06c.78.78 2.05.78 2.83 0l2.5-2.5a2 2 0 0 0-2.83-2.83L8.84 4.9a.75.75 0 0 1-1.06-1.06Zm-4.69 9.64a2 2 0 0 0 2.83 0l1.25-1.25a.75.75 0 0 1 1.06 1.06l-1.25 1.25a3.5 3.5 0 0 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .75.75 0 0 1-1.06 1.06 2 2 0 0 0-2.83 0l-2.5 2.5a2 2 0 0 0 0 2.83Z"/></svg>
+        </button>
+        <button data-fmt="image" data-i18n-title="ui.fmt.image">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M16 13.25A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.78.78 1 1.75 1h12.5c.97 0 1.75.78 1.75 1.75ZM1.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .14.11.25.25.25h.94l6.78-6.78a1.75 1.75 0 0 1 2.48 0l2.55 2.55V2.75a.25.25 0 0 0-.25-.25ZM14.5 11.81l-3.6-3.6a.25.25 0 0 0-.36 0L4.81 13.5h9.44a.25.25 0 0 0 .25-.25ZM4.5 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg>
+        </button>
+        <button data-fmt="table" data-i18n-title="ui.fmt.table">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M0 1.75C0 .78.78 0 1.75 0h12.5C15.22 0 16 .78 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25ZM6.5 6.5v8h7.75a.25.25 0 0 0 .25-.25V6.5Zm8-1.5V1.75a.25.25 0 0 0-.25-.25H6.5V5Zm-13 1.5v7.75c0 .14.11.25.25.25H5v-8ZM5 5V1.5H1.75a.25.25 0 0 0-.25.25V5Z"/></svg>
+        </button>
+        <button data-fmt="hr" data-i18n-title="ui.fmt.hr">—</button>
       </div>
       <div id="editor-host"></div>
     </section>
@@ -138,6 +187,28 @@
           <option value="auto" data-i18n="ui.theme.auto"></option>
           <option value="light" data-i18n="ui.theme.light"></option>
           <option value="dark" data-i18n="ui.theme.dark"></option>
+        </select>
+      </label>
+      <label class="field">
+        <span data-i18n="ui.settings.contentWidth"></span>
+        <select id="set-width">
+          <option value="60">60%</option>
+          <option value="70">70%</option>
+          <option value="80">80%</option>
+          <option value="90">90%</option>
+          <option value="100">100%</option>
+        </select>
+      </label>
+      <label class="field">
+        <span data-i18n="ui.settings.fontSize"></span>
+        <select id="set-font-size">
+          <option value="14">14</option>
+          <option value="15">15</option>
+          <option value="16">16</option>
+          <option value="17">17</option>
+          <option value="18">18</option>
+          <option value="20">20</option>
+          <option value="22">22</option>
         </select>
       </label>
       <label class="field checkbox">

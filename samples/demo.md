@@ -62,3 +62,24 @@ def hello(name: str) -> str:
 ### 三级标题 B
 
 内容 B
+
+## 图表与公式
+
+行内公式：$E = mc^2$，以及 $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$。
+
+$$
+\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+$$
+
+```mermaid
+flowchart LR
+    A[打开 .md] --> B{有改动?}
+    B -- 是 --> C[保存]
+    B -- 否 --> D[阅读]
+```
+
+```mermaid
+sequenceDiagram
+    用户->>SmartMdReader: 右键打开
+    SmartMdReader-->>用户: 显示预览
+```

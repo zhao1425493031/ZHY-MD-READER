@@ -422,6 +422,10 @@ public partial class MainWindow : Window
                     _settings.Theme = theme;
                 if (root.TryGetProperty("toc", out var toc) && toc.ValueKind is JsonValueKind.True or JsonValueKind.False)
                     _settings.ShowToc = toc.GetBoolean();
+                if (root.TryGetProperty("contentWidth", out var cw) && cw.TryGetInt32(out var contentWidth))
+                    _settings.ContentWidth = Math.Clamp(contentWidth, 50, 100);
+                if (root.TryGetProperty("fontSize", out var fs) && fs.TryGetInt32(out var fontSize))
+                    _settings.FontSize = Math.Clamp(fontSize, 12, 24);
                 if (GetString(root, "language") is { } lang && Loc.Normalize(lang) != Loc.Language)
                     ChangeLanguage(Loc.Normalize(lang));
                 _settings.Language = Loc.Language;
@@ -430,7 +434,18 @@ public partial class MainWindow : Window
                     s.Theme = _settings.Theme;
                     s.ShowToc = _settings.ShowToc;
                     s.Language = _settings.Language;
+                    s.ContentWidth = _settings.ContentWidth;
+                    s.FontSize = _settings.FontSize;
                 });
+                break;
+            case "pasteImage":
+                Post(new { type = "imageSaved", id = GetString(root, "id"), path = SavePastedImage(root) });
+                break;
+            case "search":
+                SearchLibrary(GetString(root, "query") ?? "", root.TryGetProperty("seq", out var seq) && seq.TryGetInt32(out var n) ? n : 0);
+                break;
+            case "exportHtml":
+                ExportHtml(GetString(root, "html") ?? "", GetString(root, "title") ?? "");
                 break;
         }
     }
@@ -501,6 +516,8 @@ public partial class MainWindow : Window
             type = "init",
             theme = _settings.Theme,
             toc = _settings.ShowToc,
+            contentWidth = latest.ContentWidth,
+            fontSize = latest.FontSize,
             language = Loc.Language,
             languages = Loc.Languages.Select(l => new { code = l.Code, name = l.NativeName }),
             strings = Loc.ViewerStrings(),
