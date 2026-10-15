@@ -20,7 +20,7 @@
   <script src="https://app.smartmd/vendor/languages/properties.min.js"></script>
   <script src="https://app.smartmd/viewer.js" defer></script>
 </head>
-<body class="empty">
+<body class="empty toc-none">
   <header id="toolbar">
     <button id="btn-toc" class="icon" data-i18n-title="ui.btn.toc">☰</button>
     <button id="btn-back" class="icon" data-i18n-title="ui.btn.back" disabled>←</button>
@@ -35,10 +35,35 @@
   </header>
 
   <div id="layout">
-    <nav id="toc">
-      <div class="toc-title" data-i18n="ui.toc.title"></div>
-      <ul id="toc-list"></ul>
-    </nav>
+    <aside id="sidebar">
+      <section id="files-pane" class="pane">
+        <div class="pane-header" id="files-header" data-i18n-title="ui.pane.collapse">
+          <span class="chevron"></span>
+          <span class="pane-title" data-i18n="ui.files.title"></span>
+          <span class="pane-actions">
+            <button id="btn-add-files" class="pane-btn" data-i18n-title="ui.files.add">＋</button>
+            <button id="btn-new-folder" class="pane-btn" data-i18n-title="ui.files.newFolder">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M1.75 2.5h4.19c.2 0 .39.08.53.22l1.06 1.06c.14.14.33.22.53.22h6.19c.41 0 .75.34.75.75v8.5c0 .41-.34.75-.75.75H1.75A.75.75 0 0 1 1 13.25V3.25c0-.41.34-.75.75-.75ZM2.5 4v8.75h11V5.5H8.06c-.6 0-1.17-.24-1.59-.66L5.63 4H2.5Zm5.5 2.5c.28 0 .5.22.5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7c0-.28.22-.5.5-.5Z"/></svg>
+            </button>
+          </span>
+        </div>
+        <div class="pane-body" id="files-body">
+          <ul id="files-list"></ul>
+          <div id="files-empty" data-i18n="ui.files.empty"></div>
+        </div>
+      </section>
+      <div id="pane-splitter"></div>
+      <section id="toc-pane" class="pane">
+        <div class="pane-header" id="toc-header" data-i18n-title="ui.pane.collapse">
+          <span class="chevron"></span>
+          <span class="pane-title" data-i18n="ui.toc.title"></span>
+        </div>
+        <div class="pane-body">
+          <ul id="toc-list"></ul>
+        </div>
+      </section>
+    </aside>
+    <div id="sidebar-resizer"></div>
     <main id="scroller" tabindex="-1">
       <article id="content" class="markdown-body"></article>
       <section id="welcome">
@@ -75,6 +100,7 @@
     </div>
   </div>
 
+  <div id="ctx-menu" role="menu"></div>
   <div id="drop-overlay"><div data-i18n="ui.drop"></div></div>
   <div id="toast"></div>
 </body>

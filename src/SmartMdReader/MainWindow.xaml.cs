@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private string? _currentPath;
     private bool _viewerReady;
     private int _reloadRetries;
+    private string? _lastLibraryJson;
 
     public MainWindow(string? path)
     {
@@ -63,7 +64,14 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await InitializeWebViewAsync();
         PreviewKeyDown += OnPreviewKeyDown;
         Closing += (_, _) => SaveWindowState();
-        Closed += (_, _) => _watcher?.Dispose();
+        Closed += (_, _) =>
+        {
+            Library.Changed -= PostLibrary;
+            _watcher?.Dispose();
+        };
+
+        Library.StartWatching();
+        Library.Changed += PostLibrary;
     }
 
     private async Task InitializeWebViewAsync()
@@ -133,26 +141,54 @@ public partial class MainWindow : Window
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        using var doc = JsonDocument.Parse(e.WebMessageAsJson);
-        var root = doc.RootElement;
+        using var outer = JsonDocument.Parse(e.WebMessageAsJson);
 
-        if (root.ValueKind == JsonValueKind.String && root.GetString() == "drop")
+        // 拖放文件时，消息是 postMessageWithAdditionalObjects 发来的 JSON 字符串
+        if (outer.RootElement.ValueKind == JsonValueKind.String)
         {
-            OpenDroppedFiles(e.AdditionalObjects);
+            using var inner = JsonDocument.Parse(outer.RootElement.GetString() ?? "{}");
+            var drop = inner.RootElement;
+            if (drop.ValueKind == JsonValueKind.Object && GetString(drop, "type") == "drop")
+            {
+                var open = !drop.TryGetProperty("open", out var o) || o.ValueKind != JsonValueKind.False;
+                OpenDroppedFiles(e.AdditionalObjects, GetString(drop, "folderId"), open);
+            }
             return;
         }
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var typeProp))
+
+        var root = outer.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
             return;
 
-        switch (typeProp.GetString())
+        switch (GetString(root, "type"))
         {
             case "ready":
                 _viewerReady = true;
+                _lastLibraryJson = null;
                 PostInit();
+                PostLibrary();
                 RenderCurrent(keepScroll: false);
                 break;
             case "open":
                 ShowOpenDialog();
+                break;
+            case "openFile":
+                if (GetString(root, "path") is { } openPath)
+                {
+                    if (File.Exists(openPath))
+                        NavigateTo(openPath);
+                    else
+                        Post(new { type = "toast", message = Loc.T("toast.fileNotFound", openPath) });
+                }
+                break;
+            case "addFiles":
+                ShowAddFilesDialog(GetString(root, "folderId"));
+                break;
+            case "lib":
+                HandleLibraryOp(root);
+                break;
+            case "layout":
+                SaveLayout(root);
                 break;
             case "reload":
                 RenderCurrent(keepScroll: true);
@@ -169,30 +205,113 @@ public partial class MainWindow : Window
                     HandleLink(url);
                 break;
             case "settings":
-                if (root.TryGetProperty("theme", out var theme) && theme.GetString() is { } t)
-                    _settings.Theme = t;
+                if (GetString(root, "theme") is { } theme)
+                    _settings.Theme = theme;
                 if (root.TryGetProperty("toc", out var toc) && toc.ValueKind is JsonValueKind.True or JsonValueKind.False)
                     _settings.ShowToc = toc.GetBoolean();
-                if (root.TryGetProperty("language", out var lang) && lang.GetString() is { } l
-                    && Loc.Normalize(l) != Loc.Language)
-                {
-                    ChangeLanguage(Loc.Normalize(l));
-                }
+                if (GetString(root, "language") is { } lang && Loc.Normalize(lang) != Loc.Language)
+                    ChangeLanguage(Loc.Normalize(lang));
                 _settings.Language = Loc.Language;
-                _settings.Save();
+                AppSettings.Update(s =>
+                {
+                    s.Theme = _settings.Theme;
+                    s.ShowToc = _settings.ShowToc;
+                    s.Language = _settings.Language;
+                });
                 break;
         }
     }
 
-    private void PostInit() => Post(new
+    private void HandleLibraryOp(JsonElement msg)
     {
-        type = "init",
-        theme = _settings.Theme,
-        toc = _settings.ShowToc,
-        language = Loc.Language,
-        languages = Loc.Languages.Select(l => new { code = l.Code, name = l.NativeName }),
-        strings = Loc.ViewerStrings(),
-    });
+        var key = GetString(msg, "key");
+        var id = GetString(msg, "id");
+        var name = GetString(msg, "name");
+
+        switch (GetString(msg, "op"))
+        {
+            case "remove" when key is not null:
+                Library.Mutate(lib => Library.RemoveFile(lib, key));
+                break;
+            case "removeMissing":
+                Library.Mutate(Library.RemoveMissing);
+                break;
+            case "newFolder" when id is not null:
+                Library.Mutate(lib => Library.NewFolder(lib, id, name ?? Loc.T("ui.files.newFolder")));
+                break;
+            case "rename" when id is not null && name is not null:
+                Library.Mutate(lib => Library.RenameFolder(lib, id, name));
+                break;
+            case "deleteFolder" when id is not null:
+                Library.Mutate(lib => Library.DeleteFolder(lib, id));
+                break;
+            case "toggle" when id is not null:
+                var expanded = msg.TryGetProperty("expanded", out var ex) && ex.ValueKind == JsonValueKind.True;
+                Library.Mutate(lib => Library.SetExpanded(lib, id, expanded));
+                break;
+            case "move" when key is not null:
+                var folderId = GetString(msg, "folderId");
+                var before = GetString(msg, "before");
+                Library.Mutate(lib => Library.Move(lib, key, folderId, before));
+                break;
+            case "reveal" when key is not null:
+                if (File.Exists(key))
+                    RevealInExplorer(key);
+                else
+                    Post(new { type = "toast", message = Loc.T("toast.fileNotFound", key) });
+                break;
+        }
+    }
+
+    private void SaveLayout(JsonElement msg)
+    {
+        AppSettings.Update(s =>
+        {
+            if (msg.TryGetProperty("sidebarWidth", out var w) && w.TryGetDouble(out var width))
+                s.SidebarWidth = Math.Clamp(width, 160, 800);
+            if (msg.TryGetProperty("filesRatio", out var r) && r.TryGetDouble(out var ratio))
+                s.FilesPaneRatio = Math.Clamp(ratio, 0.1, 0.9);
+            if (msg.TryGetProperty("filesCollapsed", out var fc) && fc.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                s.FilesCollapsed = fc.GetBoolean();
+            if (msg.TryGetProperty("tocCollapsed", out var tc) && tc.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                s.TocCollapsed = tc.GetBoolean();
+        });
+    }
+
+    private void PostInit()
+    {
+        var latest = AppSettings.Load();
+        Post(new
+        {
+            type = "init",
+            theme = _settings.Theme,
+            toc = _settings.ShowToc,
+            language = Loc.Language,
+            languages = Loc.Languages.Select(l => new { code = l.Code, name = l.NativeName }),
+            strings = Loc.ViewerStrings(),
+            layout = new
+            {
+                sidebarWidth = latest.SidebarWidth,
+                filesRatio = latest.FilesPaneRatio,
+                filesCollapsed = latest.FilesCollapsed,
+                tocCollapsed = latest.TocCollapsed,
+            },
+        });
+    }
+
+    private void PostLibrary()
+    {
+        if (!_viewerReady || WebView.CoreWebView2 is null)
+            return;
+        var json = JsonSerializer.Serialize(new { type = "library", items = Library.ToView(AppSettings.Load().Library) });
+        if (json == _lastLibraryJson)
+            return;
+        _lastLibraryJson = json;
+        WebView.CoreWebView2.PostWebMessageAsJson(json);
+    }
+
+    private static string? GetString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static void ChangeLanguage(string language)
     {
@@ -210,18 +329,44 @@ public partial class MainWindow : Window
         RenderCurrent(keepScroll: true);
     }
 
-    private void OpenDroppedFiles(IEnumerable<object> objects)
+    /// <summary>拖进来的 Markdown 文件全部加入列表；拖到正文区域时同时打开第一个。</summary>
+    private void OpenDroppedFiles(IEnumerable<object> objects, string? folderId, bool open)
     {
-        var paths = objects.OfType<CoreWebView2File>().Select(f => f.Path).ToList();
+        var paths = objects.OfType<CoreWebView2File>()
+            .Select(f => TryGetFullPath(f.Path))
+            .OfType<string>()
+            .Where(p => AppInfo.IsMarkdown(p) && File.Exists(p))
+            .ToList();
         if (paths.Count == 0)
             return;
 
-        NavigateTo(paths[0]);
-        foreach (var extra in paths.Skip(1))
-            new MainWindow(extra).Show();
+        Library.Mutate(lib => Library.AddFiles(lib, paths, folderId));
+        if (open || _currentPath is null)
+            NavigateTo(paths[0]);
     }
 
     private void ShowOpenDialog()
+    {
+        var paths = PickFiles();
+        if (paths.Length == 0)
+            return;
+
+        Library.Mutate(lib => Library.AddFiles(lib, paths, null));
+        NavigateTo(paths[0]);
+    }
+
+    private void ShowAddFilesDialog(string? folderId)
+    {
+        var paths = PickFiles();
+        if (paths.Length == 0)
+            return;
+
+        Library.Mutate(lib => Library.AddFiles(lib, paths, folderId));
+        if (_currentPath is null)
+            NavigateTo(paths[0]);
+    }
+
+    private string[] PickFiles()
     {
         var dialog = new OpenFileDialog
         {
@@ -232,12 +377,9 @@ public partial class MainWindow : Window
         if (_currentPath is not null)
             dialog.InitialDirectory = Path.GetDirectoryName(_currentPath);
 
-        if (dialog.ShowDialog(this) != true)
-            return;
-
-        NavigateTo(dialog.FileNames[0]);
-        foreach (var extra in dialog.FileNames.Skip(1))
-            new MainWindow(extra).Show();
+        return dialog.ShowDialog(this) == true
+            ? dialog.FileNames.Select(TryGetFullPath).OfType<string>().ToArray()
+            : [];
     }
 
     private void NavigateTo(string path, string? fragment = null)
@@ -301,6 +443,9 @@ public partial class MainWindow : Window
             Post(new { type = "error", path, name = Path.GetFileName(path), message = ex.Message });
             return;
         }
+
+        if (!keepScroll && !Library.Contains(AppSettings.Load().Library, path))
+            Library.Mutate(lib => Library.AddFiles(lib, [path], null));
 
         Title = $"{Path.GetFileName(path)} - {AppInfo.Name}";
         Post(new
@@ -429,18 +574,17 @@ public partial class MainWindow : Window
 
     private void SaveWindowState()
     {
-        var latest = AppSettings.Load();
-        latest.Language = Loc.Language;
-        latest.Theme = _settings.Theme;
-        latest.ShowToc = _settings.ShowToc;
-        latest.Maximized = WindowState == WindowState.Maximized;
+        var maximized = WindowState == WindowState.Maximized;
         var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-        if (bounds.Width > 0 && bounds.Height > 0)
+        AppSettings.Update(s =>
         {
-            latest.WindowWidth = bounds.Width;
-            latest.WindowHeight = bounds.Height;
-        }
-        latest.Save();
+            s.Maximized = maximized;
+            if (bounds.Width > 0 && bounds.Height > 0)
+            {
+                s.WindowWidth = bounds.Width;
+                s.WindowHeight = bounds.Height;
+            }
+        });
     }
 
     private static void RevealInExplorer(string path) =>

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SmartMdReader;
 
@@ -12,32 +13,105 @@ internal sealed class AppSettings
     public double WindowHeight { get; set; } = 800;
     public bool Maximized { get; set; }
 
-    private static string FilePath => Path.Combine(AppInfo.DataDir, "settings.json");
+    public double SidebarWidth { get; set; } = 280;
+    public double FilesPaneRatio { get; set; } = 0.45;
+    public bool FilesCollapsed { get; set; }
+    public bool TocCollapsed { get; set; }
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    public List<LibraryItem> Library { get; set; } = [];
 
-    public static AppSettings Load()
+    public static string FilePath => Path.Combine(AppInfo.DataDir, "settings.json");
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    // 每次打开文件都是一个独立进程，用命名互斥量串行化「读-改-写」
+    private static readonly Mutex FileMutex = new(false, @"Local\SmartMdReader.Settings");
+
+    public static AppSettings Load() => TryLoad(out var settings) ? settings : new AppSettings();
+
+    /// <summary>读取最新设置、修改、保存。读取失败时不写入，避免用默认值覆盖用户数据。</summary>
+    public static void Update(Action<AppSettings> change)
+    {
+        var locked = false;
         try
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+            try
+            {
+                locked = FileMutex.WaitOne(TimeSpan.FromSeconds(3));
+            }
+            catch (AbandonedMutexException)
+            {
+                locked = true;
+            }
+
+            if (!TryLoad(out var settings))
+                return;
+            change(settings);
+            settings.Save();
         }
-        catch
+        finally
         {
+            if (locked)
+                FileMutex.ReleaseMutex();
         }
-        return new AppSettings();
     }
 
-    public void Save()
+    private static bool TryLoad(out AppSettings settings)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                settings = File.Exists(FilePath)
+                    ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), JsonOptions) ?? new AppSettings()
+                    : new AppSettings();
+                return true;
+            }
+            catch (IOException)
+            {
+                Thread.Sleep(40);
+            }
+            catch (JsonException)
+            {
+                settings = new AppSettings();
+                return true;
+            }
+        }
+        settings = new AppSettings();
+        return false;
+    }
+
+    private void Save()
     {
         try
         {
             Directory.CreateDirectory(AppInfo.DataDir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOptions));
+            var temp = FilePath + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonOptions));
+            File.Move(temp, FilePath, overwrite: true);
         }
         catch
         {
         }
     }
+}
+
+internal sealed class LibraryItem
+{
+    public const string FileType = "file";
+    public const string FolderType = "folder";
+
+    public string Type { get; set; } = FileType;
+    public string? Path { get; set; }
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+    public bool Expanded { get; set; } = true;
+    public List<LibraryItem>? Items { get; set; }
+
+    [JsonIgnore]
+    public bool IsFolder => Type == FolderType;
 }
