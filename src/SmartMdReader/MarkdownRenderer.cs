@@ -1,7 +1,7 @@
 using Markdig;
 using Markdig.Extensions.AutoIdentifiers;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 internal static class MarkdownRenderer
 {

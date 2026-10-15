@@ -1,14 +1,14 @@
 using System.IO;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 /// <summary>
-/// 把本地路径映射成 https://doc.zhymd/C%3A/dir/file 这样的虚拟 URL，
+/// 把本地路径映射成 https://doc.smartmd/C%3A/dir/file 这样的虚拟 URL，
 /// 让 Markdown 里的相对图片路径（包括 ../ 形式）都能被正确解析。
 /// </summary>
 internal static class DocUrl
 {
-    public const string Host = "doc.zhymd";
+    public const string Host = "doc.smartmd";
     public const string Prefix = "https://" + Host + "/";
 
     public static string FromDirectory(string directory)

@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 internal sealed class AppSettings
 {

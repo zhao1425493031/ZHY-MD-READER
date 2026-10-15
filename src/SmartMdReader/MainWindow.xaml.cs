@@ -7,11 +7,11 @@ using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 public partial class MainWindow : Window
 {
-    private const string AppHost = "app.zhymd";
+    private const string AppHost = "app.smartmd";
     private const string ViewerUrl = "https://" + AppHost + "/viewer.html";
     private const int MaxReloadRetries = 5;
 

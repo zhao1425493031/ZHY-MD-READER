@@ -1,7 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Threading;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 public partial class App : Application
 {

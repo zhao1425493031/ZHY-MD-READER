@@ -2,13 +2,13 @@
 title: 演示文档
 ---
 
-# ZHY MD Reader 演示
+# SmartMdReader 演示
 
 这是一个用来检查渲染效果的示例文件。支持 **粗体**、*斜体*、~~删除线~~、`行内代码` 和 :rocket: emoji。
 
 ## 图片（相对路径）
 
-![图标](../src/ZhyMdReader/assets/app.ico)
+![图标](../src/SmartMdReader/assets/app.ico)
 
 ## 代码高亮
 

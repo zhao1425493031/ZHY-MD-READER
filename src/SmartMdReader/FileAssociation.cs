@@ -1,16 +1,16 @@
 ﻿using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 /// <summary>
 /// 在 HKCU 下注册右键菜单和「打开方式」，不需要管理员权限。
 /// </summary>
 internal static class FileAssociation
 {
-    private const string ProgId = "ZhyMdReader.Markdown";
-    private const string VerbName = "ZhyMdReader";
-    private const string AppKey = @"Applications\ZhyMdReader.exe";
+    private const string ProgId = "SmartMdReader.Markdown";
+    private const string VerbName = "SmartMdReader";
+    private const string AppKey = @"Applications\SmartMdReader.exe";
 
     public static void Register(string exePath)
     {

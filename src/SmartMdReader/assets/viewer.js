@@ -163,7 +163,7 @@
   function setFileInfo(name, path) {
     $('file-name').textContent = name || '';
     $('file-path').textContent = path || '';
-    document.title = name ? `${name} - ZHY MD Reader` : 'ZHY MD Reader';
+    document.title = name ? `${name} - SmartMdReader` : 'SmartMdReader';
   }
 
   function enhanceCodeBlocks() {

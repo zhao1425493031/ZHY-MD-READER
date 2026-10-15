@@ -1,8 +1,8 @@
-﻿# 生成 src/ZhyMdReader/assets/app.ico（多尺寸 PNG 格式 ICO）
+﻿# 生成 src/SmartMdReader/assets/app.ico（多尺寸 PNG 格式 ICO）
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
-$out = Join-Path $PSScriptRoot '..\src\ZhyMdReader\assets\app.ico'
+$out = Join-Path $PSScriptRoot '..\src\SmartMdReader\assets\app.ico'
 $sizes = 16, 24, 32, 48, 64, 128, 256
 
 function New-IconPng([int]$size) {

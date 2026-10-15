@@ -1,15 +1,15 @@
 using System.IO;
 
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 internal static class AppInfo
 {
-    public const string Name = "ZHY MD Reader";
+    public const string Name = "SmartMdReader";
 
     public static string AssetsDir { get; } = Path.Combine(AppContext.BaseDirectory, "assets");
 
     public static string DataDir { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ZhyMdReader");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SmartMdReader");
 
     public static string WebViewDataDir { get; } = Path.Combine(DataDir, "WebView2");
 

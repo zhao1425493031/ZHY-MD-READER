@@ -1,4 +1,4 @@
-namespace ZhyMdReader;
+namespace SmartMdReader;
 
 /// <summary>
 /// 界面文本。C# 侧直接用 <see cref="T(string)"/>；以 "ui." 开头的键会下发给 viewer.js。
@@ -46,16 +46,16 @@ internal static class Loc
         {
             ["app.registered"] =
                 "Registered with File Explorer.\n\n" +
-                "· Right-click a .md file → \"Open with ZHY MD Reader\" (on Windows 11 it is under \"Show more options\").\n" +
-                "· ZHY MD Reader also appears in the \"Open with\" list.\n" +
-                "· To open on double-click: right-click a .md file → Open with → Choose another app → ZHY MD Reader → Always.",
+                "· Right-click a .md file → \"Open with SmartMdReader\" (on Windows 11 it is under \"Show more options\").\n" +
+                "· SmartMdReader also appears in the \"Open with\" list.\n" +
+                "· To open on double-click: right-click a .md file → Open with → Choose another app → SmartMdReader → Always.",
             ["app.unregistered"] = "Removed from File Explorer.",
             ["app.webview2Missing"] =
                 "Unable to start the WebView2 runtime.\nPlease install the Microsoft Edge WebView2 Runtime:\n{0}\n\n{1}",
             ["dialog.openTitle"] = "Open Markdown File",
             ["dialog.filter"] = "Markdown files|*.md;*.markdown;*.mdown;*.mkd;*.mkdn|All files|*.*",
             ["toast.fileNotFound"] = "File not found: {0}",
-            ["shell.menuText"] = "Open with ZHY MD Reader",
+            ["shell.menuText"] = "Open with SmartMdReader",
             ["shell.fileType"] = "Markdown Document",
 
             ["ui.toc.title"] = "Contents",
@@ -71,7 +71,7 @@ internal static class Loc
             ["ui.theme.light"] = "Light",
             ["ui.theme.dark"] = "Dark",
             ["ui.welcome.line1"] = "Drag a Markdown file here, or press Ctrl + O to open one.",
-            ["ui.welcome.hint"] = "In File Explorer, right-click a .md file → \"Open with ZHY MD Reader\"",
+            ["ui.welcome.hint"] = "In File Explorer, right-click a .md file → \"Open with SmartMdReader\"",
             ["ui.drop"] = "Drop to open",
             ["ui.copy"] = "Copy",
             ["ui.copy.done"] = "Copied",
@@ -87,16 +87,16 @@ internal static class Loc
         {
             ["app.registered"] =
                 "已注册到资源管理器。\n\n" +
-                "· 右键 .md 文件即可看到「用 ZHY MD Reader 打开」（Win11 在「显示更多选项」里）。\n" +
-                "· 「打开方式」列表中也会出现 ZHY MD Reader。\n" +
-                "· 想双击直接打开：右键 .md → 打开方式 → 选择其他应用 → ZHY MD Reader → 始终。",
+                "· 右键 .md 文件即可看到「用 SmartMdReader 打开」（Win11 在「显示更多选项」里）。\n" +
+                "· 「打开方式」列表中也会出现 SmartMdReader。\n" +
+                "· 想双击直接打开：右键 .md → 打开方式 → 选择其他应用 → SmartMdReader → 始终。",
             ["app.unregistered"] = "已从资源管理器中移除。",
             ["app.webview2Missing"] =
                 "无法启动 WebView2 运行时。\n请安装 Microsoft Edge WebView2 Runtime：\n{0}\n\n{1}",
             ["dialog.openTitle"] = "打开 Markdown 文件",
             ["dialog.filter"] = "Markdown 文件|*.md;*.markdown;*.mdown;*.mkd;*.mkdn|所有文件|*.*",
             ["toast.fileNotFound"] = "文件不存在：{0}",
-            ["shell.menuText"] = "用 ZHY MD Reader 打开",
+            ["shell.menuText"] = "用 SmartMdReader 打开",
             ["shell.fileType"] = "Markdown 文档",
 
             ["ui.toc.title"] = "目录",
@@ -112,7 +112,7 @@ internal static class Loc
             ["ui.theme.light"] = "浅色",
             ["ui.theme.dark"] = "深色",
             ["ui.welcome.line1"] = "把 Markdown 文件拖到这里，或者按 Ctrl + O 打开。",
-            ["ui.welcome.hint"] = "在资源管理器中右键 .md 文件 →「用 ZHY MD Reader 打开」",
+            ["ui.welcome.hint"] = "在资源管理器中右键 .md 文件 →「用 SmartMdReader 打开」",
             ["ui.drop"] = "松开以打开文件",
             ["ui.copy"] = "复制",
             ["ui.copy.done"] = "已复制",
@@ -128,16 +128,16 @@ internal static class Loc
         {
             ["app.registered"] =
                 "エクスプローラーに登録しました。\n\n" +
-                "· .md ファイルを右クリック →「ZHY MD Reader で開く」（Windows 11 では「その他のオプションを確認」内）。\n" +
-                "· 「プログラムから開く」の一覧にも ZHY MD Reader が表示されます。\n" +
-                "· ダブルクリックで開くには：.md を右クリック → プログラムから開く → 別のプログラムを選択 → ZHY MD Reader → 常に使う。",
+                "· .md ファイルを右クリック →「SmartMdReader で開く」（Windows 11 では「その他のオプションを確認」内）。\n" +
+                "· 「プログラムから開く」の一覧にも SmartMdReader が表示されます。\n" +
+                "· ダブルクリックで開くには：.md を右クリック → プログラムから開く → 別のプログラムを選択 → SmartMdReader → 常に使う。",
             ["app.unregistered"] = "エクスプローラーから登録を解除しました。",
             ["app.webview2Missing"] =
                 "WebView2 ランタイムを起動できません。\nMicrosoft Edge WebView2 Runtime をインストールしてください：\n{0}\n\n{1}",
             ["dialog.openTitle"] = "Markdown ファイルを開く",
             ["dialog.filter"] = "Markdown ファイル|*.md;*.markdown;*.mdown;*.mkd;*.mkdn|すべてのファイル|*.*",
             ["toast.fileNotFound"] = "ファイルが見つかりません：{0}",
-            ["shell.menuText"] = "ZHY MD Reader で開く",
+            ["shell.menuText"] = "SmartMdReader で開く",
             ["shell.fileType"] = "Markdown ドキュメント",
 
             ["ui.toc.title"] = "目次",
@@ -153,7 +153,7 @@ internal static class Loc
             ["ui.theme.light"] = "ライト",
             ["ui.theme.dark"] = "ダーク",
             ["ui.welcome.line1"] = "Markdown ファイルをここにドラッグするか、Ctrl + O で開いてください。",
-            ["ui.welcome.hint"] = "エクスプローラーで .md ファイルを右クリック →「ZHY MD Reader で開く」",
+            ["ui.welcome.hint"] = "エクスプローラーで .md ファイルを右クリック →「SmartMdReader で開く」",
             ["ui.drop"] = "ドロップして開く",
             ["ui.copy"] = "コピー",
             ["ui.copy.done"] = "コピーしました",
