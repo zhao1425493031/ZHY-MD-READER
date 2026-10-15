@@ -26,8 +26,15 @@
     sidebar: true,
     language: 'en',
     currentPath: null,
-    layout: { sidebarWidth: 280, filesRatio: 0.45, filesCollapsed: false, tocCollapsed: false },
+    layout: { sidebarWidth: 280, filesRatio: 0.45, filesCollapsed: false, tocCollapsed: false, editorRatio: 0.5 },
   };
+  const MODES = ['read', 'split', 'edit'];
+  const edit = { mode: 'read', editor: null, source: '', saved: '', dirty: false, canEdit: false, pendingSave: null, previewTimer: 0 };
+  const pen = { active: false, tool: 'pen', color: '#e5534b', size: 4, strokes: [], history: [], current: null, erasing: null, width: 0 };
+  let lineMarks = [];
+
+  // 宿主在「是否保存」时通过 ExecuteScript 取编辑器内容
+  window.SmartMd = { getText: () => (edit.editor ? edit.editor.getText() : null) };
   let strings = {};
   let library = [];
   let headings = [];
@@ -57,6 +64,7 @@
     $('hl-dark').disabled = effective !== 'dark';
     $('btn-theme').textContent = t(`ui.theme.${state.theme}`);
     $('set-theme').value = state.theme;
+    if (edit.editor) edit.editor.setDark(effective === 'dark');
   }
 
   function setTheme(theme) {
@@ -86,9 +94,12 @@
 
   // ---------- 侧栏布局 ----------
   function applyLayout() {
-    const { sidebarWidth, filesRatio, filesCollapsed, tocCollapsed } = state.layout;
-    document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
-    document.documentElement.style.setProperty('--files-h', `${filesRatio * 100}%`);
+    const { sidebarWidth, filesRatio, filesCollapsed, tocCollapsed, editorRatio } = state.layout;
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--sidebar-w', `${sidebarWidth}px`);
+    rootStyle.setProperty('--files-h', `${filesRatio * 100}%`);
+    rootStyle.setProperty('--editor-grow', String(editorRatio));
+    rootStyle.setProperty('--preview-grow', String(1 - editorRatio));
     document.body.classList.toggle('files-collapsed', filesCollapsed);
     document.body.classList.toggle('toc-collapsed', tocCollapsed);
   }
@@ -144,6 +155,14 @@
     applyLayout();
   });
 
+  dragHandle($('editor-splitter'), 'resizing-editor', event => {
+    const left = $('editor-pane').getBoundingClientRect().left;
+    const right = $('preview-wrap').getBoundingClientRect().right;
+    const ratio = (event.clientX - left) / (right - left);
+    state.layout.editorRatio = Math.min(Math.max(ratio, 0.15), 0.85);
+    applyLayout();
+  });
+
   // ---------- 设置 ----------
   function fillLanguages(languages) {
     const select = $('set-language');
@@ -182,26 +201,52 @@
 
   // ---------- 渲染 ----------
   function render(msg) {
+    const same = samePath(msg.path, state.currentPath);
     const previousScroll = msg.keepScroll ? scroller.scrollTop : 0;
 
     $('doc-base').href = msg.baseHref;
     content.innerHTML = msg.html;
-    document.body.classList.remove('empty');
+    document.body.classList.remove('empty', 'load-failed');
     setFileInfo(msg.name, msg.path);
     $('btn-back').disabled = !msg.canGoBack;
 
+    edit.canEdit = true;
+    loadSource(msg.source ?? '', same && msg.keepScroll);
+    if (!same || !msg.keepScroll) clearPen();
+
     enhanceCodeBlocks();
     buildToc();
+    collectLineMarks();
+
+    if (!same && headings.length > 0 && state.layout.tocCollapsed) {
+      state.layout.tocCollapsed = false;
+      applyLayout();
+      saveLayout();
+    }
 
     // 窗口激活时 WebView2 会把焦点交给文档里的可聚焦元素并滚动过去，先把焦点固定在滚动区域
-    scroller.focus({ preventScroll: true });
+    if (edit.mode === 'read') scroller.focus({ preventScroll: true });
 
     if (msg.fragment) {
       scrollToId(msg.fragment);
+    } else if (edit.mode === 'split' && msg.keepScroll) {
+      syncPreviewToEditor();
     } else {
       scroller.scrollTop = previousScroll;
       restoreScrollAfterImages(previousScroll);
     }
+    updateActiveHeading();
+  }
+
+  function applyPreview(html) {
+    const previousScroll = scroller.scrollTop;
+    content.innerHTML = html;
+    enhanceCodeBlocks();
+    buildToc();
+    collectLineMarks();
+    clearPen();
+    if (edit.mode === 'split') syncPreviewToEditor();
+    else scroller.scrollTop = previousScroll;
     updateActiveHeading();
   }
 
@@ -226,11 +271,13 @@
     tocLinks = [];
     document.body.classList.add('empty', 'toc-none');
     setFileInfo('', '');
+    disableEditing();
   }
 
   function showError(msg) {
     document.body.classList.remove('empty');
-    document.body.classList.add('toc-none');
+    document.body.classList.add('toc-none', 'load-failed');
+    disableEditing();
     tocList.innerHTML = '';
     setFileInfo(msg.name, msg.path);
     content.innerHTML = '';
@@ -292,6 +339,10 @@
       a.style.paddingLeft = `${10 + (Number(h.tagName[1]) - minLevel) * 14}px`;
       a.addEventListener('click', event => {
         event.preventDefault();
+        if (edit.mode !== 'read' && edit.editor && h.dataset.line) {
+          edit.editor.gotoLine(Number(h.dataset.line) + 1);
+          if (edit.mode === 'edit') return;
+        }
         h.scrollIntoView({ block: 'start' });
       });
       li.appendChild(a);
@@ -392,7 +443,9 @@
 
   function markActiveFile() {
     filesList.querySelectorAll('.lib-row[data-kind="file"]').forEach(row => {
-      row.classList.toggle('active', samePath(row.dataset.key, state.currentPath));
+      const active = samePath(row.dataset.key, state.currentPath);
+      row.classList.toggle('active', active);
+      row.classList.toggle('dirty', active && edit.dirty);
     });
   }
 
@@ -746,6 +799,431 @@
     toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
   }
 
+  // ---------- 编辑 ----------
+  const isDark = () => document.documentElement.dataset.theme === 'dark';
+
+  function ensureEditor() {
+    if (edit.editor || !window.SmartEditor) return;
+    edit.editor = SmartEditor.create($('editor-host'), {
+      doc: edit.source,
+      dark: isDark(),
+      onChange: onEditorChange,
+      onScroll: () => {
+        if (syncLock !== 'preview') syncPreviewToEditor();
+      },
+    });
+  }
+
+  function setMode(mode) {
+    if (!MODES.includes(mode) || !edit.canEdit) mode = 'read';
+    const changed = mode !== edit.mode;
+    edit.mode = mode;
+    MODES.forEach(m => document.body.classList.toggle(`mode-${m}`, m === mode));
+    document.querySelectorAll('#mode-switch button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    if (changed) post({ type: 'mode', mode });
+    if (mode === 'edit') closePen();
+    if (mode !== 'edit') refreshPreview();
+
+    if (mode === 'read') {
+      scroller.focus({ preventScroll: true });
+    } else {
+      ensureEditor();
+      if (edit.editor) {
+        edit.editor.refresh();
+        edit.editor.focus();
+      }
+      if (mode === 'split') requestAnimationFrame(syncPreviewToEditor);
+    }
+    if (pen.active) requestAnimationFrame(resizePenCanvas);
+  }
+
+  function cycleMode() {
+    if (!edit.canEdit) return;
+    setMode(MODES[(MODES.indexOf(edit.mode) + 1) % MODES.length]);
+  }
+
+  function disableEditing() {
+    edit.canEdit = false;
+    clearTimeout(edit.previewTimer);
+    loadSource('', false);
+    clearPen();
+    closePen();
+    setMode('read');
+  }
+
+  function loadSource(source, sameDoc) {
+    clearTimeout(edit.previewTimer);
+    edit.source = source;
+    edit.saved = source;
+    edit.previewed = source;
+    if (edit.editor) {
+      if (sameDoc) edit.editor.replaceDoc(source);
+      else edit.editor.setDoc(source);
+    }
+    document.body.classList.remove('external-change');
+    setDirty(false);
+  }
+
+  function setDirty(dirty) {
+    document.body.classList.toggle('dirty', dirty);
+    if (edit.dirty === dirty) return;
+    edit.dirty = dirty;
+    markActiveFile();
+    post({ type: 'dirty', dirty });
+  }
+
+  function onEditorChange() {
+    clearTimeout(edit.previewTimer);
+    edit.previewTimer = setTimeout(() => {
+      const text = edit.editor.getText();
+      setDirty(text !== edit.saved);
+      if (edit.mode === 'split') refreshPreview();
+    }, 150);
+  }
+
+  function refreshPreview() {
+    if (!edit.editor || !edit.canEdit) return;
+    const text = edit.editor.getText();
+    if (text === edit.previewed) return;
+    edit.previewed = text;
+    post({ type: 'preview', text });
+  }
+
+  function saveDoc() {
+    if (!edit.editor || !edit.canEdit || edit.mode === 'read') return;
+    edit.pendingSave = edit.editor.getText();
+    post({ type: 'save', text: edit.pendingSave });
+  }
+
+  function onSaved(text) {
+    edit.saved = typeof text === 'string' ? text : (edit.pendingSave ?? edit.saved);
+    edit.pendingSave = null;
+    document.body.classList.remove('external-change');
+    setDirty(edit.editor ? edit.editor.getText() !== edit.saved : false);
+    toast(t('ui.edit.saved'));
+  }
+
+  // 预览里每个块的源码行号（递增），用来按编辑器位置同步滚动
+  function collectLineMarks() {
+    lineMarks = [];
+    let last = -1;
+    content.querySelectorAll('[data-line]').forEach(el => {
+      const line = Number(el.dataset.line);
+      if (line > last && el.getClientRects().length > 0) {
+        lineMarks.push({ line, el });
+        last = line;
+      }
+    });
+  }
+
+  function syncPreviewToEditor() {
+    if (edit.mode !== 'split' || !edit.editor || lineMarks.length === 0) return;
+    const line = edit.editor.topLine() - 1;
+    let i = 0;
+    while (i + 1 < lineMarks.length && lineMarks[i + 1].line <= line) i++;
+    const a = lineMarks[i];
+    const b = lineMarks[i + 1];
+    const origin = scroller.getBoundingClientRect().top - scroller.scrollTop;
+    const topA = a.el.getBoundingClientRect().top - origin;
+    let y = topA;
+    if (line < a.line) {
+      y = 0;
+    } else if (b) {
+      const topB = b.el.getBoundingClientRect().top - origin;
+      y = topA + (topB - topA) * Math.min(1, (line - a.line) / (b.line - a.line));
+    }
+    lockSync('editor');
+    scroller.scrollTop = Math.max(0, y - SYNC_OFFSET);
+  }
+
+  // 双向同步：正在滚动的一侧持有锁，另一侧被程序滚动产生的 scroll 事件不再反向同步
+  const SYNC_OFFSET = 12;
+  let syncLock = null;
+  let syncLockTimer = 0;
+  function lockSync(side) {
+    syncLock = side;
+    clearTimeout(syncLockTimer);
+    syncLockTimer = setTimeout(() => { syncLock = null; }, 120);
+  }
+
+  function syncEditorToPreview() {
+    if (edit.mode !== 'split' || !edit.editor || lineMarks.length === 0) return;
+    const origin = scroller.getBoundingClientRect().top - scroller.scrollTop;
+    const topOf = i => lineMarks[i].el.getBoundingClientRect().top - origin;
+    const y = scroller.scrollTop + SYNC_OFFSET;
+
+    let line;
+    if (y < topOf(0)) {
+      line = lineMarks[0].line * (y / Math.max(topOf(0), 1));
+    } else {
+      let lo = 0;
+      let hi = lineMarks.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (topOf(mid) <= y) lo = mid;
+        else hi = mid - 1;
+      }
+      const a = lineMarks[lo];
+      const b = lineMarks[lo + 1];
+      line = a.line;
+      if (b) {
+        const topA = topOf(lo);
+        const topB = topOf(lo + 1);
+        if (topB > topA) line += (b.line - a.line) * Math.min(1, (y - topA) / (topB - topA));
+      }
+    }
+    lockSync('preview');
+    edit.editor.scrollToLine(line + 1);
+  }
+
+  scroller.addEventListener('scroll', () => {
+    if (edit.mode === 'split' && syncLock !== 'editor') syncEditorToPreview();
+  });
+
+  document.querySelectorAll('#mode-switch button').forEach(button => {
+    button.addEventListener('click', () => setMode(button.dataset.mode));
+  });
+  $('btn-save').addEventListener('click', saveDoc);
+  $('banner-keep').addEventListener('click', () => document.body.classList.remove('external-change'));
+  $('banner-reload').addEventListener('click', () => {
+    document.body.classList.remove('external-change');
+    if (edit.editor) edit.saved = edit.editor.getText();
+    setDirty(false);
+    post({ type: 'forceReload' });
+  });
+
+  // ---------- 演示笔 ----------
+  const penCanvas = $('pen-canvas');
+  const penCtx = penCanvas.getContext('2d');
+  let penFrame = 0;
+
+  function openPen() {
+    if (edit.mode === 'edit' || document.body.classList.contains('empty')) return;
+    hideMenu();
+    pen.active = true;
+    document.body.classList.add('pen-on');
+    $('btn-pen').classList.add('active');
+    updatePenToolbar();
+    resizePenCanvas();
+  }
+
+  function closePen() {
+    if (!pen.active) return;
+    pen.active = false;
+    pen.current = null;
+    pen.erasing = null;
+    clearPen();
+    document.body.classList.remove('pen-on', 'pen-eraser');
+    $('btn-pen').classList.remove('active');
+  }
+
+  function togglePen() {
+    if (pen.active) closePen();
+    else openPen();
+  }
+
+  function clearPen() {
+    pen.strokes = [];
+    pen.history = [];
+    pen.current = null;
+    pen.erasing = null;
+    redrawPen();
+  }
+
+  function updatePenToolbar() {
+    document.querySelectorAll('.pen-tool').forEach(b => b.classList.toggle('active', b.dataset.tool === pen.tool));
+    document.querySelectorAll('.pen-color').forEach(b => b.classList.toggle('active', b.dataset.color === pen.color));
+    document.querySelectorAll('.pen-size').forEach(b => b.classList.toggle('active', Number(b.dataset.size) === pen.size));
+    document.body.classList.toggle('pen-eraser', pen.tool === 'eraser');
+  }
+
+  // 画布只盖住内容区，不挡滚动条；宽度变化会导致重新排版，笔迹随之清空
+  function resizePenCanvas() {
+    if (!pen.active) return;
+    const width = scroller.clientWidth;
+    const height = scroller.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    if (pen.width && pen.width !== width) clearPen();
+    pen.width = width;
+    penCanvas.style.width = `${width}px`;
+    penCanvas.style.height = `${height}px`;
+    penCanvas.style.right = 'auto';
+    penCanvas.style.bottom = 'auto';
+    penCanvas.width = Math.round(width * dpr);
+    penCanvas.height = Math.round(height * dpr);
+    redrawPen();
+  }
+
+  function scheduleRedraw() {
+    if (penFrame) return;
+    penFrame = requestAnimationFrame(() => {
+      penFrame = 0;
+      redrawPen();
+    });
+  }
+
+  const strokeWidth = (s, pressure) => {
+    const base = s.tool === 'highlighter' ? s.size * 4 : s.size;
+    return s.pressure ? base * (0.4 + (pressure ?? 0.5)) : base;
+  };
+
+  function drawStroke(s) {
+    const pts = s.points;
+    penCtx.save();
+    penCtx.globalAlpha = s.tool === 'highlighter' ? 0.35 : 1;
+    penCtx.strokeStyle = s.color;
+    penCtx.fillStyle = s.color;
+    penCtx.lineCap = s.tool === 'highlighter' ? 'butt' : 'round';
+    penCtx.lineJoin = 'round';
+
+    if (pts.length === 1) {
+      penCtx.beginPath();
+      penCtx.arc(pts[0].x, pts[0].y, strokeWidth(s, pts[0].p) / 2, 0, Math.PI * 2);
+      penCtx.fill();
+    } else if (s.pressure && s.tool !== 'highlighter') {
+      for (let i = 1; i < pts.length; i++) {
+        penCtx.lineWidth = strokeWidth(s, pts[i].p);
+        penCtx.beginPath();
+        penCtx.moveTo(pts[i - 1].x, pts[i - 1].y);
+        penCtx.lineTo(pts[i].x, pts[i].y);
+        penCtx.stroke();
+      }
+    } else {
+      penCtx.lineWidth = strokeWidth(s, 0.5);
+      penCtx.beginPath();
+      penCtx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i].x + pts[i + 1].x) / 2;
+        const my = (pts[i].y + pts[i + 1].y) / 2;
+        penCtx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+      }
+      const end = pts[pts.length - 1];
+      penCtx.lineTo(end.x, end.y);
+      penCtx.stroke();
+    }
+    penCtx.restore();
+  }
+
+  function redrawPen() {
+    const dpr = window.devicePixelRatio || 1;
+    penCtx.setTransform(1, 0, 0, 1, 0, 0);
+    penCtx.clearRect(0, 0, penCanvas.width, penCanvas.height);
+    if (!pen.active || pen.strokes.length === 0) return;
+    penCtx.setTransform(dpr, 0, 0, dpr, 0, -scroller.scrollTop * dpr);
+    pen.strokes.forEach(drawStroke);
+  }
+
+  // 笔迹坐标记录在文档坐标系（含滚动偏移），滚动时跟着内容走
+  function penPoint(e) {
+    const rect = penCanvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top + scroller.scrollTop,
+      p: e.pressure || 0.5,
+    };
+  }
+
+  function eraseAt(pt) {
+    for (let i = pen.strokes.length - 1; i >= 0; i--) {
+      const s = pen.strokes[i];
+      const reach = 8 + strokeWidth(s, 0.5) / 2;
+      if (s.points.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) <= reach)) {
+        pen.strokes.splice(i, 1);
+        pen.erasing.push({ stroke: s, index: i });
+      }
+    }
+    scheduleRedraw();
+  }
+
+  function undoPen() {
+    const action = pen.history.pop();
+    if (!action) return;
+    if (action.type === 'add') {
+      const index = pen.strokes.indexOf(action.stroke);
+      if (index >= 0) pen.strokes.splice(index, 1);
+    } else {
+      for (let i = action.items.length - 1; i >= 0; i--) {
+        pen.strokes.splice(action.items[i].index, 0, action.items[i].stroke);
+      }
+    }
+    redrawPen();
+  }
+
+  penCanvas.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    penCanvas.setPointerCapture(event.pointerId);
+    const pt = penPoint(event);
+    // 数位笔尾端橡皮 (button 5) 也当橡皮擦
+    if (pen.tool === 'eraser' || event.button === 5) {
+      pen.erasing = [];
+      eraseAt(pt);
+      return;
+    }
+    pen.current = {
+      tool: pen.tool,
+      color: pen.color,
+      size: pen.size,
+      pressure: event.pointerType === 'pen',
+      points: [pt],
+    };
+    pen.strokes.push(pen.current);
+    scheduleRedraw();
+  });
+
+  penCanvas.addEventListener('pointermove', event => {
+    if (!pen.current && !pen.erasing) return;
+    const events = event.getCoalescedEvents ? event.getCoalescedEvents() : [event];
+    (events.length ? events : [event]).forEach(e => {
+      const pt = penPoint(e);
+      if (pen.current) pen.current.points.push(pt);
+      else eraseAt(pt);
+    });
+    scheduleRedraw();
+  });
+
+  const finishPenStroke = () => {
+    if (pen.current) {
+      pen.history.push({ type: 'add', stroke: pen.current });
+      pen.current = null;
+    }
+    if (pen.erasing) {
+      if (pen.erasing.length) pen.history.push({ type: 'erase', items: pen.erasing });
+      pen.erasing = null;
+    }
+  };
+  penCanvas.addEventListener('pointerup', finishPenStroke);
+  penCanvas.addEventListener('pointercancel', finishPenStroke);
+
+  penCanvas.addEventListener('wheel', event => {
+    event.preventDefault();
+    scroller.scrollTop += event.deltaY;
+  }, { passive: false });
+
+  scroller.addEventListener('scroll', () => {
+    if (pen.active) scheduleRedraw();
+  });
+  new ResizeObserver(() => resizePenCanvas()).observe(scroller);
+
+  document.querySelectorAll('.pen-tool').forEach(b => b.addEventListener('click', () => {
+    pen.tool = b.dataset.tool;
+    updatePenToolbar();
+  }));
+  document.querySelectorAll('.pen-color').forEach(b => b.addEventListener('click', () => {
+    pen.color = b.dataset.color;
+    if (pen.tool === 'eraser') pen.tool = 'pen';
+    updatePenToolbar();
+  }));
+  document.querySelectorAll('.pen-size').forEach(b => b.addEventListener('click', () => {
+    pen.size = Number(b.dataset.size);
+    if (pen.tool === 'eraser') pen.tool = 'pen';
+    updatePenToolbar();
+  }));
+  $('pen-undo').addEventListener('click', undoPen);
+  $('pen-clear').addEventListener('click', clearPen);
+  $('pen-close').addEventListener('click', closePen);
+  $('btn-pen').addEventListener('click', togglePen);
+
   // ---------- 工具栏与快捷键 ----------
   $('btn-toc').addEventListener('click', toggleSidebar);
   $('btn-back').addEventListener('click', () => post({ type: 'back' }));
@@ -756,12 +1234,26 @@
   $('file-path').addEventListener('click', () => post({ type: 'reveal' }));
 
   document.addEventListener('keydown', event => {
+    const key = event.key.toLowerCase();
+    const inEditor = !!(event.target.closest && event.target.closest('#editor-host'));
     if (event.ctrlKey && event.key === '\\') {
       event.preventDefault();
       toggleSidebar();
     } else if (event.ctrlKey && event.key === ',') {
       event.preventDefault();
       openSettings();
+    } else if (event.ctrlKey && !event.shiftKey && !event.altKey && key === 's') {
+      event.preventDefault();
+      saveDoc();
+    } else if (event.ctrlKey && !event.shiftKey && !event.altKey && key === 'e') {
+      event.preventDefault();
+      cycleMode();
+    } else if (event.ctrlKey && !event.shiftKey && !event.altKey && key === 'd' && !inEditor) {
+      event.preventDefault();
+      togglePen();
+    } else if (event.ctrlKey && !event.shiftKey && key === 'z' && pen.active && !inEditor) {
+      event.preventDefault();
+      undoPen();
     } else if (event.key === 'Escape') {
       if (ctxMenu.classList.contains('open')) {
         event.preventDefault();
@@ -769,6 +1261,9 @@
       } else if (document.body.classList.contains('settings-open')) {
         event.preventDefault();
         closeSettings();
+      } else if (pen.active) {
+        event.preventDefault();
+        closePen();
       }
     }
   });
@@ -796,6 +1291,16 @@
           renderLibrary();
           break;
         case 'render': render(msg); break;
+        case 'previewHtml': if (edit.canEdit) applyPreview(msg.html); break;
+        case 'saved': onSaved(msg.text); break;
+        case 'discard':
+          if (edit.editor) edit.saved = edit.editor.getText();
+          setDirty(false);
+          break;
+        case 'externalChange':
+          document.body.classList.add('external-change');
+          if (edit.mode === 'read') setMode('split');
+          break;
         case 'empty': showEmpty(); break;
         case 'error': showError(msg); break;
         case 'scroll': scrollToId(msg.fragment); break;

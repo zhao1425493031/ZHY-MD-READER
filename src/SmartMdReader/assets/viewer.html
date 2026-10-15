@@ -18,9 +18,10 @@
   <script src="https://app.smartmd/vendor/languages/apache.min.js"></script>
   <script src="https://app.smartmd/vendor/languages/dos.min.js"></script>
   <script src="https://app.smartmd/vendor/languages/properties.min.js"></script>
+  <script src="https://app.smartmd/vendor/editor.js" defer></script>
   <script src="https://app.smartmd/viewer.js" defer></script>
 </head>
-<body class="empty toc-none">
+<body class="empty toc-none mode-read">
   <header id="toolbar">
     <button id="btn-toc" class="icon" data-i18n-title="ui.btn.toc">☰</button>
     <button id="btn-back" class="icon" data-i18n-title="ui.btn.back" disabled>←</button>
@@ -29,6 +30,17 @@
       <span id="file-name"></span>
       <span id="file-path" data-i18n-title="ui.filePath.title"></span>
     </div>
+    <div id="mode-switch" class="segmented" data-i18n-title="ui.mode.title">
+      <button data-mode="read" data-i18n="ui.mode.read"></button>
+      <button data-mode="split" data-i18n="ui.mode.split"></button>
+      <button data-mode="edit" data-i18n="ui.mode.edit"></button>
+    </div>
+    <button id="btn-save" class="icon" data-i18n-title="ui.edit.save">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M2.75 1.5h8.69c.2 0 .39.08.53.22l2.31 2.31c.14.14.22.33.22.53v8.69c0 .41-.34.75-.75.75H2.75a.75.75 0 0 1-.75-.75V2.25c0-.41.34-.75.75-.75ZM3.5 3v10h1V9.25c0-.41.34-.75.75-.75h5.5c.41 0 .75.34.75.75V13h1V5.31L10.69 3H10.5v2.25c0 .41-.34.75-.75.75h-4A.75.75 0 0 1 5 5.25V3H3.5Zm3 0v1.5H9V3H6.5Zm3.5 7H6v3h4v-3Z"/></svg>
+    </button>
+    <button id="btn-pen" class="icon" data-i18n-title="ui.pen.title">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M11.01 1.72a1.75 1.75 0 0 1 2.47 0l.8.8a1.75 1.75 0 0 1 0 2.47l-8.3 8.3c-.1.1-.23.17-.36.2l-3.25.86a.75.75 0 0 1-.92-.92l.86-3.25c.03-.13.1-.26.2-.36l8.5-8.1Zm1.41 1.06a.25.25 0 0 0-.35 0L10.9 3.95l1.15 1.15 1.17-1.17a.25.25 0 0 0 0-.35l-.8-.8ZM10.99 6.16 9.84 5.01 3.98 10.6l-.5 1.92 1.92-.5 5.6-5.86Z"/></svg>
+    </button>
     <button id="btn-reload" class="icon" data-i18n-title="ui.btn.reload">⟳</button>
     <button id="btn-theme" data-i18n-title="ui.btn.theme"></button>
     <button id="btn-settings" class="icon" data-i18n-title="ui.btn.settings">⚙</button>
@@ -64,15 +76,53 @@
       </section>
     </aside>
     <div id="sidebar-resizer"></div>
-    <main id="scroller" tabindex="-1">
-      <article id="content" class="markdown-body"></article>
-      <section id="welcome">
-        <div class="welcome-logo">MD</div>
-        <h1>SmartMdReader</h1>
-        <p data-i18n="ui.welcome.line1"></p>
-        <p class="hint" data-i18n="ui.welcome.hint"></p>
-      </section>
-    </main>
+    <section id="editor-pane">
+      <div id="editor-banner">
+        <span data-i18n="ui.edit.externalChange"></span>
+        <button id="banner-reload" data-i18n="ui.edit.reload"></button>
+        <button id="banner-keep" data-i18n="ui.edit.keepMine"></button>
+      </div>
+      <div id="editor-host"></div>
+    </section>
+    <div id="editor-splitter"></div>
+    <div id="preview-wrap">
+      <main id="scroller" tabindex="-1">
+        <article id="content" class="markdown-body"></article>
+        <section id="welcome">
+          <div class="welcome-logo">MD</div>
+          <h1>SmartMdReader</h1>
+          <p data-i18n="ui.welcome.line1"></p>
+          <p class="hint" data-i18n="ui.welcome.hint"></p>
+        </section>
+      </main>
+      <canvas id="pen-canvas"></canvas>
+      <div id="pen-toolbar">
+        <button class="pen-tool" data-tool="pen" data-i18n-title="ui.pen.pen">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M11.01 1.72a1.75 1.75 0 0 1 2.47 0l.8.8a1.75 1.75 0 0 1 0 2.47l-8.3 8.3c-.1.1-.23.17-.36.2l-3.25.86a.75.75 0 0 1-.92-.92l.86-3.25c.03-.13.1-.26.2-.36l8.5-8.1Z"/></svg>
+        </button>
+        <button class="pen-tool" data-tool="highlighter" data-i18n-title="ui.pen.highlighter">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M10.5 1.5 14.5 5.5 8 12H4v-4l6.5-6.5ZM5.5 8.6V10.5h1.9l5-5-1.9-1.9-5 5ZM1.5 13.5h13v1.5h-13z"/></svg>
+        </button>
+        <button class="pen-tool" data-tool="eraser" data-i18n-title="ui.pen.eraser">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M9.06 1.94a1.5 1.5 0 0 1 2.12 0l2.88 2.88a1.5 1.5 0 0 1 0 2.12L8.5 12.5H14V14H5.56L1.94 10.38a1.5 1.5 0 0 1 0-2.12l7.12-6.32ZM5.2 7.9 3 9.86 6.18 13h.2l2.12-2.12L5.2 7.9Z"/></svg>
+        </button>
+        <span class="pen-sep"></span>
+        <button class="pen-color" data-color="#e5534b" style="--c:#e5534b"></button>
+        <button class="pen-color" data-color="#2f81f7" style="--c:#2f81f7"></button>
+        <button class="pen-color" data-color="#2da44e" style="--c:#2da44e"></button>
+        <button class="pen-color" data-color="#d4a72c" style="--c:#d4a72c"></button>
+        <span class="pen-sep"></span>
+        <button class="pen-size" data-size="2"><i style="--s:4px"></i></button>
+        <button class="pen-size" data-size="4"><i style="--s:7px"></i></button>
+        <button class="pen-size" data-size="8"><i style="--s:11px"></i></button>
+        <span class="pen-sep"></span>
+        <button id="pen-undo" data-i18n-title="ui.pen.undo">↶</button>
+        <button id="pen-clear" data-i18n-title="ui.pen.clear">
+          <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M6.5 1.75a.25.25 0 0 1 .25-.25h2.5a.25.25 0 0 1 .25.25V3h-3V1.75ZM11 3V1.75A1.75 1.75 0 0 0 9.25 0h-2.5A1.75 1.75 0 0 0 5 1.75V3H2.75a.75.75 0 0 0 0 1.5h.58l.7 9.85A1.75 1.75 0 0 0 5.77 16h4.46a1.75 1.75 0 0 0 1.74-1.65l.7-9.85h.58a.75.75 0 0 0 0-1.5H11ZM4.83 4.5h6.34l-.69 9.74a.25.25 0 0 1-.25.26H5.77a.25.25 0 0 1-.25-.26L4.83 4.5Z"/></svg>
+        </button>
+        <button id="pen-close" data-i18n-title="ui.pen.close">✕</button>
+      </div>
+    </div>
   </div>
 
   <div id="settings-overlay">

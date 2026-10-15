@@ -283,6 +283,7 @@ body.toc-none #toc-header { opacity: .55; }
 .lib-row.active .icon { color: var(--toc-active); }
 
 .lib-row.missing .name { color: var(--bar-muted); text-decoration: line-through; opacity: .7; }
+.lib-row.dirty .name::after { content: " ●"; color: #d4a72c; }
 
 .lib-folder.collapsed > ul { display: none; }
 .lib-folder > .lib-row .folder-chevron { width: 10px; font-size: 10px; color: var(--bar-muted); transition: transform .12s; }
@@ -378,12 +379,192 @@ body.toc-none #toc-header { opacity: .55; }
   font-weight: 600;
 }
 
+#preview-wrap {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
 #scroller {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   overflow-anchor: none;
   outline: none;
 }
+
+/* 工具栏：模式切换 / 保存 / 演示笔 */
+.segmented {
+  display: inline-flex;
+  margin: 0 6px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--page-bg);
+}
+
+#toolbar .segmented button {
+  height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+#toolbar .segmented button.active {
+  background: var(--toc-active);
+  color: #fff;
+}
+
+body.empty .segmented,
+body.load-failed .segmented { opacity: .4; pointer-events: none; }
+
+#btn-save { display: none; position: relative; }
+body.mode-split #btn-save,
+body.mode-edit #btn-save { display: inline-block; }
+body.dirty #btn-save::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d4a72c;
+}
+
+#btn-pen.active { background: var(--toc-active) !important; color: #fff; }
+body.mode-edit #btn-pen,
+body.empty #btn-pen { opacity: .35; pointer-events: none; }
+
+/* 编辑区 */
+#editor-pane,
+#editor-splitter { display: none; }
+
+body.mode-split #editor-pane,
+body.mode-edit #editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--page-bg);
+}
+
+body.mode-split #editor-pane { flex: var(--editor-grow, 1) 1 0; }
+body.mode-split #preview-wrap { flex: var(--preview-grow, 1) 1 0; }
+body.mode-edit #editor-pane { flex: 1 1 0; }
+body.mode-edit #preview-wrap { display: none; }
+
+body.mode-split #editor-splitter {
+  display: block;
+  width: 5px;
+  margin: 0 -2px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  position: relative;
+  z-index: 1;
+  border-left: 1px solid var(--border);
+}
+
+body.mode-split #editor-splitter:hover,
+body.resizing-editor #editor-splitter { background: var(--toc-active); opacity: .5; }
+body.resizing-editor, body.resizing-editor * { cursor: col-resize !important; user-select: none !important; }
+
+#editor-host { flex: 1; min-height: 0; overflow: hidden; }
+
+#editor-banner {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #fff8c5;
+  color: #3b2300;
+  border-bottom: 1px solid #d4a72c;
+  font-size: 12px;
+}
+
+:root[data-theme="dark"] #editor-banner { background: #3b2e00; color: #f0d77a; }
+body.external-change #editor-banner { display: flex; }
+#editor-banner span { flex: 1; }
+
+#editor-banner button {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 演示笔 */
+#pen-canvas,
+#pen-toolbar { display: none; }
+
+body.pen-on #pen-canvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+body.pen-on.pen-eraser #pen-canvas { cursor: cell; }
+
+body.pen-on #pen-toolbar {
+  display: flex;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--page-bg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+  user-select: none;
+}
+
+#pen-toolbar button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bar-fg);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+#pen-toolbar button:hover { background: var(--btn-hover); }
+#pen-toolbar button.active { background: var(--toc-hover); outline: 1.5px solid var(--toc-active); }
+
+.pen-color::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.pen-size i {
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: var(--bar-fg);
+}
+
+.pen-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
 
 /* 正文 */
 :root .markdown-body {
@@ -397,10 +578,12 @@ body.toc-none #toc-header { opacity: .55; }
 }
 
 .markdown-body {
-  max-width: 980px;
+  width: 90%;
   margin: 0 auto;
-  padding: 32px 48px 120px;
+  padding: 32px 0 120px;
 }
+
+body.mode-split .markdown-body { width: 92%; padding-top: 20px; }
 
 body.empty #content { display: none; }
 
@@ -567,8 +750,10 @@ body.settings-open #settings-overlay { display: flex; }
 /* 打印 / 另存为 PDF */
 @media print {
   html, body { height: auto; overflow: visible; }
-  #toolbar, #sidebar, #sidebar-resizer, #ctx-menu, #toast, #drop-overlay, #settings-overlay, .copy-btn { display: none !important; }
+  #toolbar, #sidebar, #sidebar-resizer, #ctx-menu, #toast, #drop-overlay, #settings-overlay, .copy-btn,
+  #editor-pane, #editor-splitter, #pen-canvas, #pen-toolbar { display: none !important; }
+  #preview-wrap { display: block !important; }
   #layout { display: block; height: auto; }
   #scroller { overflow: visible; }
-  .markdown-body { max-width: none; padding: 0; }
+  .markdown-body { width: auto; max-width: none; padding: 0; }
 }

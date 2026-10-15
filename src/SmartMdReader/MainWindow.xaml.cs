@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
@@ -41,6 +42,11 @@ public partial class MainWindow : Window
     private bool _viewerReady;
     private int _reloadRetries;
     private string? _lastLibraryJson;
+    private TextFormat _format = TextFormat.Utf8;
+    private bool _dirty;
+    private string _mode = "read";
+    private DateTime _ignoreChangesUntil;
+    private bool _closeConfirmed;
 
     public MainWindow(string? path)
     {
@@ -58,12 +64,12 @@ public partial class MainWindow : Window
         _reloadTimer.Tick += (_, _) =>
         {
             _reloadTimer.Stop();
-            RenderCurrent(keepScroll: true);
+            OnFileChangedOnDisk();
         };
 
         Loaded += async (_, _) => await InitializeWebViewAsync();
         PreviewKeyDown += OnPreviewKeyDown;
-        Closing += (_, _) => SaveWindowState();
+        Closing += OnClosing;
         Closed += (_, _) =>
         {
             Library.Changed -= PostLibrary;
@@ -109,6 +115,7 @@ public partial class MainWindow : Window
             HandleLink(e.Uri);
         };
         core.WebMessageReceived += OnWebMessageReceived;
+        core.ContextMenuRequested += OnContextMenuRequested;
 
         core.Navigate(ViewerUrl);
     }
@@ -119,7 +126,7 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.F5 || (ctrl && e.Key == Key.R))
         {
-            RenderCurrent(keepScroll: true);
+            ReloadGuarded();
             e.Handled = true;
         }
         else if (ctrl && e.Key == Key.O)
@@ -132,11 +139,195 @@ public partial class MainWindow : Window
             Close();
             e.Handled = true;
         }
-        else if ((e.Key == Key.System && e.SystemKey == Key.Left) || e.Key == Key.BrowserBack)
+        else if (e.Key == Key.BrowserBack
+                 || (e.Key == Key.System && e.SystemKey == Key.Left && _mode == "read"))
         {
             GoBack();
             e.Handled = true;
         }
+    }
+
+    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_dirty && !_closeConfirmed)
+        {
+            e.Cancel = true;
+            Dispatcher.BeginInvoke(async () =>
+            {
+                if (await ConfirmLeaveAsync())
+                {
+                    _closeConfirmed = true;
+                    Close();
+                }
+            });
+            return;
+        }
+        SaveWindowState();
+    }
+
+    // ---------- 编辑与保存 ----------
+
+    /// <summary>有未保存的修改时询问：保存 / 不保存 / 取消。返回 false 表示用户取消。</summary>
+    private async Task<bool> ConfirmLeaveAsync()
+    {
+        if (!_dirty || _currentPath is null)
+            return true;
+
+        var answer = MessageBox.Show(this, Loc.T("edit.confirmSave", Path.GetFileName(_currentPath)),
+            AppInfo.Name, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Cancel)
+            return false;
+
+        if (answer == MessageBoxResult.No)
+        {
+            SetDirty(false);
+            Post(new { type = "discard" });
+            return true;
+        }
+
+        var text = await GetEditorTextAsync();
+        return text is not null && SaveText(text);
+    }
+
+    private async Task<string?> GetEditorTextAsync()
+    {
+        if (WebView.CoreWebView2 is null)
+            return null;
+        var json = await WebView.CoreWebView2.ExecuteScriptAsync("window.SmartMd ? window.SmartMd.getText() : null");
+        return JsonSerializer.Deserialize<string?>(json);
+    }
+
+    private bool SaveText(string text)
+    {
+        if (_currentPath is null)
+            return false;
+
+        var path = _currentPath;
+        try
+        {
+            _ignoreChangesUntil = DateTime.UtcNow.AddSeconds(2);
+            try
+            {
+                TextFileReader.Write(path, text, _format);
+            }
+            catch (EncoderFallbackException)
+            {
+                var answer = MessageBox.Show(this, Loc.T("edit.encodingFallback", _format.Encoding.WebName),
+                    AppInfo.Name, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes)
+                    return false;
+                _format = TextFormat.Utf8 with { NewLine = _format.NewLine };
+                TextFileReader.Write(path, text, _format);
+            }
+            _ignoreChangesUntil = DateTime.UtcNow.AddSeconds(1);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, Loc.T("edit.saveFailed", Path.GetFileName(path), ex.Message),
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+
+        SetDirty(false);
+        Post(new { type = "saved", text });
+        return true;
+    }
+
+    private void SetDirty(bool dirty)
+    {
+        _dirty = dirty;
+        UpdateTitle();
+    }
+
+    private void UpdateTitle()
+    {
+        Title = _currentPath is null
+            ? AppInfo.Name
+            : $"{(_dirty ? "● " : "")}{Path.GetFileName(_currentPath)} - {AppInfo.Name}";
+    }
+
+    private void OnFileChangedOnDisk()
+    {
+        if (DateTime.UtcNow < _ignoreChangesUntil)
+            return;
+        if (_dirty)
+        {
+            Post(new { type = "externalChange" });
+            return;
+        }
+        RenderCurrent(keepScroll: true);
+    }
+
+    private async void ReloadGuarded()
+    {
+        if (await ConfirmLeaveAsync())
+            RenderCurrent(keepScroll: true);
+    }
+
+    private async void NavigateGuarded(string path, string? fragment = null)
+    {
+        if (await ConfirmLeaveAsync())
+            NavigateTo(path, fragment);
+    }
+
+    // 页面地址是虚拟域名，浏览器里打不开，这些菜单项没有意义
+    private static readonly HashSet<string> HiddenMenuItems = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "copyLinkToHighlight", "moreTools", "share", "webCapture", "saveAs", "saveLinkAs",
+        "saveImageAs", "copyImageLocation", "inspectElement", "openLinkInNewWindow",
+    };
+
+    private void OnContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
+    {
+        var items = e.MenuItems;
+        for (var i = items.Count - 1; i >= 0; i--)
+        {
+            var item = items[i];
+            if (HiddenMenuItems.Contains(item.Name))
+            {
+                items.RemoveAt(i);
+            }
+            else if (item.Name == "copyLinkLocation" && e.ContextMenuTarget.HasLinkUri
+                && LinkToCopyText(e.ContextMenuTarget.LinkUri) is { } text)
+            {
+                // 本地链接复制真实路径，而不是 https://doc.smartmd/... 虚拟地址
+                var copy = WebView.CoreWebView2.Environment.CreateContextMenuItem(
+                    item.Label, null, CoreWebView2ContextMenuItemKind.Command);
+                copy.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() =>
+                {
+                    try { Clipboard.SetText(text); } catch { }
+                });
+                items.RemoveAt(i);
+                items.Insert(i, copy);
+            }
+        }
+
+        while (items.Count > 0 && items[0].Kind == CoreWebView2ContextMenuItemKind.Separator)
+            items.RemoveAt(0);
+        while (items.Count > 0 && items[^1].Kind == CoreWebView2ContextMenuItemKind.Separator)
+            items.RemoveAt(items.Count - 1);
+        for (var i = items.Count - 1; i > 0; i--)
+        {
+            if (items[i].Kind == CoreWebView2ContextMenuItemKind.Separator
+                && items[i - 1].Kind == CoreWebView2ContextMenuItemKind.Separator)
+                items.RemoveAt(i);
+        }
+    }
+
+    private string? LinkToCopyText(string link)
+    {
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var uri))
+            return null;
+        if (!uri.Host.Equals(DocUrl.Host, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var local = DocUrl.ToLocalPath(uri);
+        if (local is null)
+            return null;
+        if (Directory.Exists(local) && uri.Fragment.Length > 1 && _currentPath is not null
+            && PathEquals(Path.GetDirectoryName(_currentPath)!, local))
+            local = _currentPath;
+        return uri.Fragment.Length > 1 ? local + Uri.UnescapeDataString(uri.Fragment) : local;
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -165,6 +356,8 @@ public partial class MainWindow : Window
             case "ready":
                 _viewerReady = true;
                 _lastLibraryJson = null;
+                _mode = "read";
+                SetDirty(false);
                 PostInit();
                 PostLibrary();
                 RenderCurrent(keepScroll: false);
@@ -175,11 +368,31 @@ public partial class MainWindow : Window
             case "openFile":
                 if (GetString(root, "path") is { } openPath)
                 {
+                    if (_currentPath is not null && PathEquals(_currentPath, openPath))
+                        break;
                     if (File.Exists(openPath))
-                        NavigateTo(openPath);
+                        NavigateGuarded(openPath);
                     else
                         Post(new { type = "toast", message = Loc.T("toast.fileNotFound", openPath) });
                 }
+                break;
+            case "preview":
+                if (GetString(root, "text") is { } previewText)
+                    Post(new { type = "previewHtml", html = MarkdownRenderer.ToHtml(previewText) });
+                break;
+            case "save":
+                if (GetString(root, "text") is { } saveText)
+                    SaveText(saveText);
+                break;
+            case "dirty":
+                SetDirty(root.TryGetProperty("dirty", out var d) && d.ValueKind == JsonValueKind.True);
+                break;
+            case "mode":
+                _mode = GetString(root, "mode") ?? "read";
+                break;
+            case "forceReload":
+                SetDirty(false);
+                RenderCurrent(keepScroll: true);
                 break;
             case "addFiles":
                 ShowAddFilesDialog(GetString(root, "folderId"));
@@ -191,7 +404,7 @@ public partial class MainWindow : Window
                 SaveLayout(root);
                 break;
             case "reload":
-                RenderCurrent(keepScroll: true);
+                ReloadGuarded();
                 break;
             case "back":
                 GoBack();
@@ -275,6 +488,8 @@ public partial class MainWindow : Window
                 s.FilesCollapsed = fc.GetBoolean();
             if (msg.TryGetProperty("tocCollapsed", out var tc) && tc.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 s.TocCollapsed = tc.GetBoolean();
+            if (msg.TryGetProperty("editorRatio", out var er) && er.TryGetDouble(out var editorRatio))
+                s.EditorRatio = Math.Clamp(editorRatio, 0.15, 0.85);
         });
     }
 
@@ -295,6 +510,7 @@ public partial class MainWindow : Window
                 filesRatio = latest.FilesPaneRatio,
                 filesCollapsed = latest.FilesCollapsed,
                 tocCollapsed = latest.TocCollapsed,
+                editorRatio = latest.EditorRatio,
             },
         });
     }
@@ -342,7 +558,7 @@ public partial class MainWindow : Window
 
         Library.Mutate(lib => Library.AddFiles(lib, paths, folderId));
         if (open || _currentPath is null)
-            NavigateTo(paths[0]);
+            NavigateGuarded(paths[0]);
     }
 
     private void ShowOpenDialog()
@@ -352,7 +568,7 @@ public partial class MainWindow : Window
             return;
 
         Library.Mutate(lib => Library.AddFiles(lib, paths, null));
-        NavigateTo(paths[0]);
+        NavigateGuarded(paths[0]);
     }
 
     private void ShowAddFilesDialog(string? folderId)
@@ -395,8 +611,11 @@ public partial class MainWindow : Window
         RenderCurrent(keepScroll: false, fragment);
     }
 
-    private void GoBack()
+    private async void GoBack()
     {
+        if (_history.Count == 0 || !await ConfirmLeaveAsync())
+            return;
+
         while (_history.Count > 0)
         {
             var previous = _history.Pop();
@@ -415,7 +634,7 @@ public partial class MainWindow : Window
 
         if (_currentPath is null)
         {
-            Title = AppInfo.Name;
+            UpdateTitle();
             Post(new { type = "empty" });
             return;
         }
@@ -424,9 +643,12 @@ public partial class MainWindow : Window
         WatchFile(path);
 
         string html;
+        string source;
         try
         {
-            html = MarkdownRenderer.ToHtml(TextFileReader.Read(path));
+            source = TextFileReader.Read(path, out var format);
+            html = MarkdownRenderer.ToHtml(source);
+            _format = format;
             _reloadRetries = 0;
         }
         catch (IOException) when (keepScroll && _reloadRetries < MaxReloadRetries)
@@ -439,7 +661,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _reloadRetries = 0;
-            Title = $"{Path.GetFileName(path)} - {AppInfo.Name}";
+            SetDirty(false);
             Post(new { type = "error", path, name = Path.GetFileName(path), message = ex.Message });
             return;
         }
@@ -447,11 +669,12 @@ public partial class MainWindow : Window
         if (!keepScroll && !Library.Contains(AppSettings.Load().Library, path))
             Library.Mutate(lib => Library.AddFiles(lib, [path], null));
 
-        Title = $"{Path.GetFileName(path)} - {AppInfo.Name}";
+        UpdateTitle();
         Post(new
         {
             type = "render",
             html,
+            source,
             path,
             name = Path.GetFileName(path),
             baseHref = DocUrl.FromDirectory(Path.GetDirectoryName(path)!),
@@ -513,7 +736,7 @@ public partial class MainWindow : Window
                 if (_currentPath is not null && PathEquals(_currentPath, local))
                     Post(new { type = "scroll", fragment });
                 else if (File.Exists(local))
-                    NavigateTo(local, fragment);
+                    NavigateGuarded(local, fragment);
                 else
                     Post(new { type = "toast", message = Loc.T("toast.fileNotFound", local) });
             }

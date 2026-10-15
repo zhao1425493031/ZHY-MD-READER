@@ -14,6 +14,11 @@ Windows 上的轻量 Markdown 阅览器。在资源管理器中右键 `.md` 文�
   右键菜单可打开、在资源管理器中显示、移动到文件夹、从列表移除（不删除磁盘文件）、重命名/删除文件夹、移除已不存在的文件
 - 左侧「目录」（TOC），滚动时自动高亮当前章节
 - 侧栏的「文件」和「目录」两块都可折叠，中间分隔条可拖动调整高度，侧栏宽度也可拖动
+- 编辑：工具栏可切换「阅读 / 分屏 / 编辑」（Ctrl+E）。分屏时左边源码（CodeMirror，语法高亮、Ctrl+F 查找替换）、
+  右边实时预览并跟随滚动；Ctrl+S 保存，保留原文件的编码、BOM 和换行符；未保存时标题和文件列表显示 ●，
+  切换文件/关闭/重新加载前会询问是否保存；文件被外部修改时提示「重新加载 / 保留我的修改」
+- 演示笔（Ctrl+D）：开会或共享屏幕时在预览上圈画，支持笔/荧光笔/橡皮擦、4 种颜色、3 种粗细、撤销（Ctrl+Z）、清空，
+  笔迹跟随滚动；按 Esc 退出，笔迹不保存（切换文件或改变窗口宽度时清空）
 - 相对路径图片（包括 `../img/a.png`）正确显示
 - 文件保存后自动刷新，并保持滚动位置
 - 浅色 / 深色 / 跟随系统 三种主题
@@ -42,7 +47,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 - 可选任务：注册 .md 右键菜单（默认勾选）、桌面快捷方式；自动创建开始菜单快捷方式
 - 检测 WebView2 运行时，缺失时提示下载
 - 覆盖安装即升级；卸载时移除右键菜单、程序文件和用户数据
-- 支持静默安装：`SmartMdReader-Setup-1.0.0.exe /VERYSILENT /TASKS="explorer"`
+- 支持静默安装：`SmartMdReader-Setup-1.2.0.exe /VERYSILENT /TASKS="explorer"`
 
 使用提示：
 
@@ -64,6 +69,9 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1
 | 按键 | 功能 |
 |---|---|
 | Ctrl+O | 打开文件 |
+| Ctrl+E | 切换 阅读 / 分屏 / 编辑 |
+| Ctrl+S | 保存 |
+| Ctrl+D | 演示笔开/关（Esc 退出，Ctrl+Z 撤销一笔） |
 | F5 / Ctrl+R | 重新加载 |
 | Alt+← | 返回上一个文件 |
 | Ctrl+\ | 显示/隐藏目录 |
@@ -87,6 +95,7 @@ dotnet run -- ..\..\samples\demo.md
 - `src/SmartMdReader/FileAssociation.cs`：右键菜单 / 打开方式注册
 - `src/SmartMdReader/Loc.cs`：中英日界面文本（`ui.*` 键会下发给前端）
 - `src/SmartMdReader/assets/viewer.*`：阅读界面（HTML/CSS/JS）
+- `editor/`：CodeMirror 6 编辑器源码，用 `scripts\build-editor.ps1` 打包成 `assets/vendor/editor.js`（需要 Node.js，产物已提交，平时不用重新打包）
 - `installer/SmartMdReader.iss`：Inno Setup 安装包脚本
 - `scripts/`：构建安装包、开发用安装/卸载、图标生成脚本
 - `samples/`：测试用 Markdown

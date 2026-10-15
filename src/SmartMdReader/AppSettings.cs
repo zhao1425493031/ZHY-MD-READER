@@ -17,6 +17,7 @@ internal sealed class AppSettings
     public double FilesPaneRatio { get; set; } = 0.45;
     public bool FilesCollapsed { get; set; }
     public bool TocCollapsed { get; set; }
+    public double EditorRatio { get; set; } = 0.5;
 
     public List<LibraryItem> Library { get; set; } = [];
 
